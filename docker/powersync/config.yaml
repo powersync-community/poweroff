@@ -1,0 +1,33 @@
+replication:
+  connections:
+    - type: postgresql
+      uri: !env PS_SOURCE_URI
+      sslmode: disable
+
+storage:
+  type: postgresql
+  uri: !env PS_STORAGE_URI
+  sslmode: disable
+
+port: 8080
+
+client_auth:
+  audience:
+    - !env PS_JWT_AUDIENCE
+  jwks:
+    keys:
+      - kty: oct
+        alg: HS256
+        kid: !env PS_JWT_KID
+        k: !env PS_JWT_SECRET_B64URL
+
+sync_rules:
+  content: |
+    bucket_definitions:
+      global_data:
+        data:
+          - SELECT * FROM app_user
+          - SELECT * FROM work_order
+          - SELECT * FROM work_order_note
+          - SELECT * FROM part_usage_event
+          - SELECT * FROM conflict_record

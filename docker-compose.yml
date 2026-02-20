@@ -1,0 +1,82 @@
+services:
+  postgres_source:
+    image: postgres:16
+    container_name: powerchat-postgres-source
+    restart: unless-stopped
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: powerchat
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_source_data:/var/lib/postgresql/data
+      - ./docker/postgres-source/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d powerchat"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  postgres_storage:
+    image: postgres:16
+    container_name: powerchat-postgres-storage
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: powersync_storage
+    ports:
+      - "5434:5432"
+    volumes:
+      - pg_storage_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d powersync_storage"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  powersync:
+    image: journeyapps/powersync-service:latest
+    container_name: powerchat-powersync
+    restart: unless-stopped
+    command: ["start", "-r", "unified"]
+    depends_on:
+      postgres_source:
+        condition: service_healthy
+      postgres_storage:
+        condition: service_healthy
+    environment:
+      POWERSYNC_CONFIG_PATH: /config/config.yaml
+      PS_SOURCE_URI: postgresql://postgres:postgres@postgres_source:5432/powerchat
+      PS_STORAGE_URI: postgresql://postgres:postgres@postgres_storage:5432/powersync_storage
+      PS_JWT_KID: local-dev-key
+      PS_JWT_SECRET_B64URL: cG93ZXJjaGF0LWxvY2FsLWRldi1zaWduaW5nLXNlY3JldA
+      PS_JWT_AUDIENCE: powersync-dev
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./docker/powersync/config.yaml:/config/config.yaml:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:8080/probes/liveness').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pg_source_data:
+  pg_storage_data:
