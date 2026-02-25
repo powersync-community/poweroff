@@ -1,4 +1,4 @@
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 
 let pool: Pool | null = null;
 
@@ -16,6 +16,7 @@ function getPool(): Pool {
       connectionTimeoutMillis: 2000,
     });
   }
+
   return pool;
 }
 
@@ -38,9 +39,27 @@ export async function query(text: string, params?: any[]) {
   }
 }
 
+export async function withTransaction<T>(
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await getPool().connect();
+
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function getOne<T = any>(
   text: string,
-  params?: any[]
+  params?: any[],
 ): Promise<T | null> {
   const result = await queryInternal(text, params);
   return result.rows[0] || null;
@@ -48,7 +67,7 @@ export async function getOne<T = any>(
 
 export async function getMany<T = any>(
   text: string,
-  params?: any[]
+  params?: any[],
 ): Promise<T[]> {
   "use server";
   const result = await query(text, params);

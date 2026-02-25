@@ -1,41 +1,52 @@
 import {
-  PowerSyncDatabase,
   AbstractPowerSyncDatabase,
   PowerSyncBackendConnector,
-  createBaseLogger,
-  LogLevel,
+  PowerSyncDatabase,
 } from "@powersync/web";
 import { column, Schema, Table } from "@powersync/web";
-import { getPowerSyncToken } from "~/slices/sync-engine/query.token.server";
-import { uploadData as uploadToServer } from "~/slices/sync-engine/mutation.upload.server";
+import { getPowerSyncToken, uploadData } from "~/server/powersync";
 import {
   appendSyncActivities,
-  flushQueuedOperation,
   type SyncActivityItem,
 } from "~/lib/sync-activity";
+import { isSyncPaused } from "~/sync/control";
 
-class WorkOrderConnector implements PowerSyncBackendConnector {
+class TicketConnector implements PowerSyncBackendConnector {
   async fetchCredentials() {
     const { token, expiresAt } = await getPowerSyncToken();
     const endpoint = import.meta.env.VITE_POWERSYNC_URL;
-    return { endpoint, token, expiresAt: new Date(expiresAt) };
+    return {
+      endpoint,
+      token,
+      expiresAt: new Date(expiresAt),
+    };
   }
 
   async uploadData(database: AbstractPowerSyncDatabase): Promise<void> {
+    if (isSyncPaused()) {
+      console.log("[powersync] upload paused");
+      return;
+    }
+
     while (true) {
+      if (isSyncPaused()) {
+        console.log(
+          "[powersync] paused while uploading; stop current drain loop",
+        );
+        break;
+      }
+
       const transaction = await database.getNextCrudTransaction();
       if (!transaction) {
         break;
       }
 
-      const payload = transaction.crud.map((op) => ({
-        op: op.op,
-        table: op.table,
-        id: op.id,
-        opData: op.opData ?? {},
-      }));
+      if (isSyncPaused()) {
+        console.log("[powersync] paused before completing transaction");
+        break;
+      }
 
-      const response = await uploadToServer(payload);
+      const response = await uploadData(transaction.crud);
       if (!response.success) {
         throw new Error(response.error || "write_batch_failed");
       }
@@ -54,27 +65,23 @@ class WorkOrderConnector implements PowerSyncBackendConnector {
       );
 
       appendSyncActivities(activityRows);
-      flushQueuedOperation(activityRows.length || transaction.crud.length);
 
       await transaction.complete();
     }
   }
 }
 
-export const workOrderSchema = new Schema({
+export const ticketSchema = new Schema({
   app_user: new Table({
     id: column.text,
     name: column.text,
-    role: column.text,
   }),
-  work_order: new Table(
+  ticket: new Table(
     {
       id: column.text,
       title: column.text,
-      priority: column.text,
+      description: column.text,
       status: column.text,
-      assignee_id: column.text,
-      site_contact_phone: column.text,
       deleted_at: column.text,
       created_at: column.text,
       updated_at: column.text,
@@ -82,42 +89,88 @@ export const workOrderSchema = new Schema({
     },
     {
       indexes: {
-        idx_work_order_assignee: ["assignee_id"],
-        idx_work_order_status: ["status"],
+        idx_ticket_status: ["status"],
       },
     },
   ),
-  work_order_note: new Table({
-    id: column.text,
-    work_order_id: column.text,
-    crdt_payload: column.text,
-    updated_by: column.text,
-    updated_at: column.text,
-  }),
-  part_usage_event: new Table(
+  ticket_assignment: new Table(
     {
       id: column.text,
-      work_order_id: column.text,
-      part_sku: column.text,
-      qty_delta: column.integer,
+      ticket_id: column.text,
+      user_id: column.text,
+      deleted_at: column.text,
+      created_at: column.text,
+    },
+    {
+      indexes: {
+        idx_ticket_assignment_ticket: ["ticket_id", "created_at"],
+      },
+    },
+  ),
+  ticket_comment: new Table(
+    {
+      id: column.text,
+      ticket_id: column.text,
+      body: column.text,
+      created_by: column.text,
+      deleted_at: column.text,
+      created_at: column.text,
+    },
+    {
+      indexes: {
+        idx_ticket_comment_ticket: ["ticket_id", "created_at"],
+      },
+    },
+  ),
+  ticket_attachment_url: new Table(
+    {
+      id: column.text,
+      ticket_id: column.text,
+      url: column.text,
+      url_hash: column.text,
+      created_by: column.text,
+      deleted_at: column.text,
+      created_at: column.text,
+    },
+    {
+      indexes: {
+        idx_ticket_attachment_ticket: ["ticket_id", "created_at"],
+      },
+    },
+  ),
+  ticket_link: new Table(
+    {
+      id: column.text,
+      ticket_id: column.text,
+      url: column.text,
+      created_by: column.text,
+      deleted_at: column.text,
+      created_at: column.text,
+    },
+    {
+      indexes: {
+        idx_ticket_link_ticket: ["ticket_id", "created_at"],
+      },
+    },
+  ),
+  ticket_description_update: new Table(
+    {
+      id: column.text,
+      ticket_id: column.text,
+      update_b64: column.text,
       created_by: column.text,
       created_at: column.text,
     },
     {
       indexes: {
-        idx_part_usage_event_work_order: ["work_order_id", "created_at"],
+        idx_ticket_description_update_ticket: ["ticket_id", "created_at"],
       },
     },
   ),
-  part_inventory: new Table({
-    part_sku: column.text,
-    on_hand: column.integer,
-  }),
-  conflict_record: new Table(
+  ticket_conflict: new Table(
     {
       id: column.text,
-      entity_type: column.text,
-      entity_id: column.text,
+      ticket_id: column.text,
       field_name: column.text,
       local_value: column.text,
       server_value: column.text,
@@ -129,35 +182,47 @@ export const workOrderSchema = new Schema({
     },
     {
       indexes: {
-        idx_conflict_record_status: ["status", "created_at"],
+        idx_ticket_conflict_status: ["status", "created_at"],
+      },
+    },
+  ),
+  ticket_activity: new Table(
+    {
+      id: column.text,
+      ticket_id: column.text,
+      action: column.text,
+      field_name: column.text,
+      details: column.text,
+      created_by: column.text,
+      created_at: column.text,
+    },
+    {
+      indexes: {
+        idx_ticket_activity_ticket: ["ticket_id", "created_at"],
       },
     },
   ),
 });
 
 export const powerSyncDb = new PowerSyncDatabase({
-  schema: workOrderSchema,
+  schema: ticketSchema,
   database: {
-    dbFilename: "work-orders-demo.db",
+    dbFilename: "ticket-demo.db",
   },
 });
 
+const connector = new TicketConnector();
 let connectPromise: Promise<void> | null = null;
-const logger = createBaseLogger();
-logger.setLevel(LogLevel.INFO);
-
-const connector = new WorkOrderConnector();
 
 export async function getPowerSync() {
   if (!connectPromise) {
     connectPromise = (async () => {
-      console.log(`connecting powesync`);
+      console.log("[powersync] connecting");
       await powerSyncDb.connect(connector);
-      console.log(`connecting powesync 2`);
       await powerSyncDb.waitForReady();
-      console.log(`connecting powesync 3`);
+      console.log("[powersync] connected");
     })().catch((error) => {
-      console.error("Error connecting to PowerSync:", error);
+      console.error("[powersync] failed to connect", error);
       connectPromise = null;
       throw error;
     });

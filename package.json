@@ -32,6 +32,7 @@
     "solid-js": "^1.9.5",
     "solid-marked": "^0.6.3",
     "vinxi": "^0.5.7",
+    "yjs": "^13.6.27",
     "zod": "^4.3.6"
   },
   "devDependencies": {

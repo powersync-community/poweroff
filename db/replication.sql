@@ -1,4 +1,4 @@
--- PowerSync replication setup for Offline Work Order Board demo.
+-- PowerSync replication setup for Offline Ticket Demo.
 -- Run this after enabling logical replication.
 
 CREATE ROLE powersync_role WITH REPLICATION BYPASSRLS LOGIN PASSWORD 'REPLACE_WITH_SECURE_PASSWORD';
@@ -10,15 +10,15 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO powersync_ro
 CREATE PUBLICATION powersync FOR ALL TABLES;
 
 -- Sync rule intent (configure in PowerSync service):
--- request.jwt() includes user_id + role
+-- request.jwt() includes user_id
 --
--- bucket tech_work_orders:
---   SELECT * FROM work_order WHERE assignee_id = request.user_id()::uuid;
---
--- bucket manager_work_orders:
---   SELECT * FROM work_order WHERE request.jwt() ->> 'role' = 'manager';
---
--- related tables bucketed by work_order_id:
---   work_order_note, part_usage_event, conflict_record
---
--- managers get open conflicts globally for demo simplicity.
+-- bucket demo_data:
+--   SELECT * FROM app_user;
+--   SELECT * FROM ticket;
+--   SELECT * FROM ticket_assignment;
+--   SELECT * FROM ticket_comment;
+--   SELECT * FROM ticket_attachment_url;
+--   SELECT * FROM ticket_link;
+--   SELECT * FROM ticket_description_update;
+--   SELECT * FROM ticket_conflict;
+--   SELECT * FROM ticket_activity;

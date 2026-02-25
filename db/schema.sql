@@ -1,52 +1,72 @@
--- Offline Work Order Board Demo Schema
+-- Offline Ticket Demo Schema
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS app_user (
   id UUID PRIMARY KEY,
-  name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('tech', 'manager'))
+  name TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS work_order (
+CREATE TABLE IF NOT EXISTS ticket (
   id UUID PRIMARY KEY,
   title TEXT NOT NULL,
-  priority TEXT NOT NULL CHECK (priority IN ('low', 'medium', 'high')),
-  status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'closed')),
-  assignee_id UUID REFERENCES app_user(id),
-  site_contact_phone TEXT,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK (status IN ('pending', 'in_progress', 'done')),
   deleted_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   version BIGINT NOT NULL DEFAULT 0
 );
 
-CREATE TABLE IF NOT EXISTS work_order_note (
+CREATE TABLE IF NOT EXISTS ticket_assignment (
   id UUID PRIMARY KEY,
-  work_order_id UUID NOT NULL UNIQUE REFERENCES work_order(id) ON DELETE CASCADE,
-  crdt_payload BYTEA NOT NULL,
-  updated_by UUID NOT NULL REFERENCES app_user(id),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  ticket_id UUID NOT NULL REFERENCES ticket(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES app_user(id),
+  deleted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(ticket_id, user_id)
 );
 
-CREATE TABLE IF NOT EXISTS part_usage_event (
+CREATE TABLE IF NOT EXISTS ticket_comment (
   id UUID PRIMARY KEY,
-  work_order_id UUID NOT NULL REFERENCES work_order(id) ON DELETE CASCADE,
-  part_sku TEXT NOT NULL,
-  qty_delta INTEGER NOT NULL,
+  ticket_id UUID NOT NULL REFERENCES ticket(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  created_by UUID NOT NULL REFERENCES app_user(id),
+  deleted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS ticket_attachment_url (
+  id UUID PRIMARY KEY,
+  ticket_id UUID NOT NULL REFERENCES ticket(id) ON DELETE CASCADE,
+  url TEXT NOT NULL,
+  url_hash TEXT NOT NULL,
+  created_by UUID NOT NULL REFERENCES app_user(id),
+  deleted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(ticket_id, url_hash)
+);
+
+CREATE TABLE IF NOT EXISTS ticket_link (
+  id UUID PRIMARY KEY,
+  ticket_id UUID NOT NULL REFERENCES ticket(id) ON DELETE CASCADE,
+  url TEXT NOT NULL,
+  created_by UUID NOT NULL REFERENCES app_user(id),
+  deleted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS ticket_description_update (
+  id UUID PRIMARY KEY,
+  ticket_id UUID NOT NULL REFERENCES ticket(id) ON DELETE CASCADE,
+  update_b64 TEXT NOT NULL,
   created_by UUID NOT NULL REFERENCES app_user(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS part_inventory (
-  part_sku TEXT PRIMARY KEY,
-  on_hand INTEGER NOT NULL CHECK (on_hand >= 0)
-);
-
-CREATE TABLE IF NOT EXISTS conflict_record (
+CREATE TABLE IF NOT EXISTS ticket_conflict (
   id UUID PRIMARY KEY,
-  entity_type TEXT NOT NULL,
-  entity_id UUID NOT NULL,
+  ticket_id UUID NOT NULL REFERENCES ticket(id) ON DELETE CASCADE,
   field_name TEXT NOT NULL,
   local_value JSONB NOT NULL,
   server_value JSONB NOT NULL,
@@ -57,7 +77,16 @@ CREATE TABLE IF NOT EXISTS conflict_record (
   resolved_at TIMESTAMPTZ
 );
 
--- Stores dedupe keys for idempotent write-batch handling.
+CREATE TABLE IF NOT EXISTS ticket_activity (
+  id UUID PRIMARY KEY,
+  ticket_id UUID NOT NULL REFERENCES ticket(id) ON DELETE CASCADE,
+  action TEXT NOT NULL,
+  field_name TEXT,
+  details JSONB,
+  created_by UUID REFERENCES app_user(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS sync_operation (
   op_key TEXT PRIMARY KEY,
   result_code TEXT NOT NULL,
@@ -66,13 +95,16 @@ CREATE TABLE IF NOT EXISTS sync_operation (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_work_order_assignee ON work_order (assignee_id);
-CREATE INDEX IF NOT EXISTS idx_work_order_status ON work_order (status);
-CREATE INDEX IF NOT EXISTS idx_part_usage_event_work_order ON part_usage_event (work_order_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_conflict_record_status ON conflict_record (status, created_at);
-CREATE INDEX IF NOT EXISTS idx_conflict_record_entity ON conflict_record (entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_ticket_status ON ticket (status);
+CREATE INDEX IF NOT EXISTS idx_ticket_assignment_ticket ON ticket_assignment (ticket_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ticket_comment_ticket ON ticket_comment (ticket_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ticket_attachment_ticket ON ticket_attachment_url (ticket_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ticket_link_ticket ON ticket_link (ticket_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ticket_description_update_ticket ON ticket_description_update (ticket_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ticket_activity_ticket ON ticket_activity (ticket_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ticket_conflict_status ON ticket_conflict (status, created_at);
 
-CREATE OR REPLACE FUNCTION bump_work_order_version()
+CREATE OR REPLACE FUNCTION bump_ticket_version()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.updated_at = now();
@@ -83,8 +115,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_work_order_bump_version ON work_order;
-CREATE TRIGGER trg_work_order_bump_version
-BEFORE UPDATE ON work_order
+DROP TRIGGER IF EXISTS trg_ticket_bump_version ON ticket;
+CREATE TRIGGER trg_ticket_bump_version
+BEFORE UPDATE ON ticket
 FOR EACH ROW
-EXECUTE FUNCTION bump_work_order_version();
+EXECUTE FUNCTION bump_ticket_version();

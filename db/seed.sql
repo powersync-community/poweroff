@@ -1,108 +1,93 @@
--- Seed data for Offline Work Order Board demo
+-- Seed data for Offline Ticket Demo
 
-INSERT INTO app_user (id, name, role)
+INSERT INTO app_user (id, name)
 VALUES
-  ('11111111-1111-1111-1111-111111111111', 'Tech A', 'tech'),
-  ('22222222-2222-2222-2222-222222222222', 'Manager M', 'manager')
+  ('11111111-1111-1111-1111-111111111111', 'Alex'),
+  ('22222222-2222-2222-2222-222222222222', 'Sam'),
+  ('33333333-3333-3333-3333-333333333333', 'Riley')
 ON CONFLICT (id) DO UPDATE
-SET
-  name = EXCLUDED.name,
-  role = EXCLUDED.role;
+SET name = EXCLUDED.name;
 
-INSERT INTO part_inventory (part_sku, on_hand)
-VALUES
-  ('MOTOR-1HP', 8),
-  ('FILTER-24', 20),
-  ('VALVE-RED', 12)
-ON CONFLICT (part_sku) DO UPDATE
-SET on_hand = EXCLUDED.on_hand;
-
-INSERT INTO work_order (
-  id,
-  title,
-  priority,
-  status,
-  assignee_id,
-  site_contact_phone,
-  deleted_at,
-  created_at,
-  updated_at,
-  version
-)
+INSERT INTO ticket (id, title, description, status, deleted_at, created_at, updated_at, version)
 VALUES
   (
     'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1',
-    'Inspect rooftop HVAC unit',
-    'medium',
-    'open',
-    '11111111-1111-1111-1111-111111111111',
-    '555-0100',
+    'Replace rooftop condenser belt',
+    'Old belt is cracking and causing vibration noise.',
+    'pending',
     NULL,
+    now() - interval '3 days',
     now() - interval '2 days',
-    now() - interval '2 days',
-    1
+    2
   ),
   (
     'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2',
-    'Replace water pump gasket',
-    'high',
+    'Repair loading dock roller door',
+    'Door jams near 70% open. Inspect motor and limit switch.',
     'in_progress',
-    '11111111-1111-1111-1111-111111111111',
-    '555-0133',
     NULL,
-    now() - interval '1 day',
-    now() - interval '1 day',
-    3
+    now() - interval '2 days',
+    now() - interval '10 hours',
+    5
   ),
   (
     'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3',
-    'Close out generator test',
-    'low',
-    'closed',
-    '11111111-1111-1111-1111-111111111111',
-    '555-0199',
+    'Quarterly generator functional test',
+    'Run full load simulation and record output for compliance.',
+    'done',
     NULL,
-    now() - interval '5 days',
-    now() - interval '4 days',
-    5
+    now() - interval '6 days',
+    now() - interval '1 day',
+    7
   )
 ON CONFLICT (id) DO UPDATE
 SET
   title = EXCLUDED.title,
-  priority = EXCLUDED.priority,
+  description = EXCLUDED.description,
   status = EXCLUDED.status,
-  assignee_id = EXCLUDED.assignee_id,
-  site_contact_phone = EXCLUDED.site_contact_phone,
   deleted_at = EXCLUDED.deleted_at,
   updated_at = EXCLUDED.updated_at,
   version = EXCLUDED.version;
 
-INSERT INTO work_order_note (id, work_order_id, crdt_payload, updated_by, updated_at)
+INSERT INTO ticket_assignment (id, ticket_id, user_id, deleted_at, created_at)
 VALUES
-  (
-    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1',
-    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1',
-    convert_to('Initial checklist:\n- Confirm vibration\n- Capture amperage', 'UTF8'),
-    '22222222-2222-2222-2222-222222222222',
-    now() - interval '2 days'
-  ),
-  (
-    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2',
-    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2',
-    convert_to('Gasket replacement in progress.', 'UTF8'),
-    '11111111-1111-1111-1111-111111111111',
-    now() - interval '12 hours'
-  ),
-  (
-    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb3',
-    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3',
-    convert_to('Final test completed and signed.', 'UTF8'),
-    '22222222-2222-2222-2222-222222222222',
-    now() - interval '4 days'
-  )
+  ('a1a1a1a1-0000-0000-0000-000000000001', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', '11111111-1111-1111-1111-111111111111', NULL, now() - interval '3 days'),
+  ('a1a1a1a1-0000-0000-0000-000000000002', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', '22222222-2222-2222-2222-222222222222', NULL, now() - interval '2 days'),
+  ('a1a1a1a1-0000-0000-0000-000000000003', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', '33333333-3333-3333-3333-333333333333', NULL, now() - interval '1 day')
+ON CONFLICT (ticket_id, user_id) DO UPDATE
+SET deleted_at = EXCLUDED.deleted_at;
+
+INSERT INTO ticket_comment (id, ticket_id, body, created_by, deleted_at, created_at)
+VALUES
+  ('c1c1c1c1-0000-0000-0000-000000000001', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'Need to bring spare tensioner as well.', '22222222-2222-2222-2222-222222222222', NULL, now() - interval '2 days'),
+  ('c1c1c1c1-0000-0000-0000-000000000002', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'Customer asked for completion before Friday.', '11111111-1111-1111-1111-111111111111', NULL, now() - interval '8 hours')
 ON CONFLICT (id) DO UPDATE
 SET
-  work_order_id = EXCLUDED.work_order_id,
-  crdt_payload = EXCLUDED.crdt_payload,
-  updated_by = EXCLUDED.updated_by,
-  updated_at = EXCLUDED.updated_at;
+  body = EXCLUDED.body,
+  deleted_at = EXCLUDED.deleted_at;
+
+INSERT INTO ticket_attachment_url (id, ticket_id, url, url_hash, created_by, deleted_at, created_at)
+VALUES
+  ('d1d1d1d1-0000-0000-0000-000000000001', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'https://example.com/manuals/condenser-belt-v2.pdf', md5('https://example.com/manuals/condenser-belt-v2.pdf'), '11111111-1111-1111-1111-111111111111', NULL, now() - interval '2 days'),
+  ('d1d1d1d1-0000-0000-0000-000000000002', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'https://example.com/photos/roller-door-issue.jpg', md5('https://example.com/photos/roller-door-issue.jpg'), '33333333-3333-3333-3333-333333333333', NULL, now() - interval '12 hours')
+ON CONFLICT (ticket_id, url_hash) DO UPDATE
+SET deleted_at = EXCLUDED.deleted_at;
+
+INSERT INTO ticket_link (id, ticket_id, url, created_by, deleted_at, created_at)
+VALUES
+  ('e1e1e1e1-0000-0000-0000-000000000001', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'https://kb.example.com/hvac/belt-alignment', '11111111-1111-1111-1111-111111111111', NULL, now() - interval '2 days'),
+  ('e1e1e1e1-0000-0000-0000-000000000002', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'https://kb.example.com/generator/quarterly-checklist', '22222222-2222-2222-2222-222222222222', NULL, now() - interval '1 day')
+ON CONFLICT (id) DO UPDATE
+SET
+  url = EXCLUDED.url,
+  deleted_at = EXCLUDED.deleted_at;
+
+INSERT INTO ticket_activity (id, ticket_id, action, field_name, details, created_by, created_at)
+VALUES
+  ('f1f1f1f1-0000-0000-0000-000000000001', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'ticket_created', NULL, '{"source":"seed"}'::jsonb, '11111111-1111-1111-1111-111111111111', now() - interval '3 days'),
+  ('f1f1f1f1-0000-0000-0000-000000000002', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'status_updated', 'status', '{"from":"pending","to":"in_progress"}'::jsonb, '33333333-3333-3333-3333-333333333333', now() - interval '10 hours')
+ON CONFLICT (id) DO UPDATE
+SET
+  action = EXCLUDED.action,
+  field_name = EXCLUDED.field_name,
+  details = EXCLUDED.details;

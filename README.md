@@ -1,28 +1,38 @@
-# Offline Work Order Board Demo
+# Offline Ticket Demo (PowerSync + TanStack DB)
 
-Experimental SolidStart demo for offline conflict resolution with:
+Experimental SolidStart demo for offline-first ticket workflows.
+
+## Stack
 
 - SolidJS + SolidStart
 - PowerSync (local-first queue + sync)
 - TanStack DB (reactive collections)
-- Self-hosted local stack via Docker (PowerSync + dual Postgres)
+- Local Docker stack (PowerSync + source/storage Postgres)
 
-The app is intentionally demo-grade and optimized to show conflict strategy behavior, not production hardening.
+## Demo Strategies
 
-## Implemented Conflict Strategies
+Routes are split by strategy, matching the blog narrative:
 
-- `work_order.title` and `work_order.priority`: Last-write-wins (`applied`)
-- `work_order_note.crdt_payload`: simple CRDT-style line merge (`merged`)
-- `part_usage_event` inserts: domain event handling with inventory checks (`applied` / `rejected`)
-- `work_order.status` and delete actions: role-restricted (`rejected` for tech)
-- `work_order.site_contact_phone`: manual conflict records (`needs_review`)
+- `/demo/lww` - last-write-wins defaults
+- `/demo/restricted` - disable destructive edits while offline
+- `/demo/audit-log` - append ticket activity rows for accepted writes
+- `/demo/domain-resolution` - domain rule keeps `done` from stale reopen attempts
+- `/demo/manual-resolution` - manual conflict inbox (`local`/`server`/`custom`)
+- `/demo/crdt` - collaborative description via Yjs delta rows
 
-## Demo Roles
+## Data Model
 
-- `tech`: can edit safe fields and create note/part events
-- `manager`: can resolve conflicts and perform privileged transitions/actions
+Core tables:
 
-Role switch is in the top status bar (mock auth via cookie).
+- `ticket`
+- `ticket_assignment`
+- `ticket_comment`
+- `ticket_attachment_url`
+- `ticket_link`
+- `ticket_description_update`
+- `ticket_conflict`
+- `ticket_activity`
+- `sync_operation`
 
 ## Local Bootstrap
 
@@ -32,7 +42,7 @@ Role switch is in the top status bar (mock auth via cookie).
 bun install
 ```
 
-2. Create your env file
+2. Create env file
 
 ```bash
 cp .env.example .env
@@ -44,54 +54,31 @@ cp .env.example .env
 bun run dev:stack:up
 ```
 
-4. Verify PowerSync is up
-
-```bash
-curl -f http://localhost:8080/probes/liveness
-```
-
-5. Start the app
+4. Start app (logs are always piped to `logs/dev.log`)
 
 ```bash
 bun dev
 ```
 
-6. Open the app and run the demo scenario
+5. Open [http://localhost:3000](http://localhost:3000)
 
-## UI Overview
+## Reset After Schema Changes
 
-- Left: work order list
-- Right: work order detail editor
-- Top bar: online/offline toggle, role/user, pending queue count, open conflicts
-- Bottom panels: sync activity timeline and conflict inbox
+This demo assumes breaking schema changes are acceptable.
 
-## Scenario Walkthrough (A/B/C)
+```bash
+bun run dev:stack:reset
+bun run dev:stack:up
+```
 
-1. Switch to Tech view and go offline.
-2. Edit title/priority/phone, edit note, add part event.
-3. Reconnect; queued writes upload in order.
-4. Observe sync activity outcomes: `applied`, `merged`, `rejected`, `needs_review`.
-5. Switch to Manager view and resolve open phone conflicts in Conflict Inbox.
+## Tests
 
-## Troubleshooting
+```bash
+bun run test --run
+```
 
-- Token / audience mismatch:
-  - Ensure `.env` and `docker-compose.yml` values match for:
-    - `POWERSYNC_JWT_KID`
-    - `POWERSYNC_JWT_SECRET_B64URL`
-    - `POWERSYNC_JWT_AUDIENCE`
-  - If mismatched, restart stack: `bun run dev:stack:reset && bun run dev:stack:up`
-- Replication/publication issues:
-  - Check source DB publication exists:
-    - `docker exec -it powerchat-postgres-source psql -U postgres -d powerchat -c "SELECT pubname FROM pg_publication;"`
-  - Confirm role exists:
-    - `docker exec -it powerchat-postgres-source psql -U postgres -d powerchat -c "\du"`
-- Stale local data / bucket state:
-  - Reset containers and volumes: `bun run dev:stack:reset`
-  - Delete local sqlite cache if needed: `.powersync/powerchat-server.db`
+E2E helper:
 
-## Notes
-
-- Source DB schema/seed live in `db/` and are mirrored into Docker init scripts under `docker/postgres-source/init/`.
-- Backend write handling now lives in vertical slices under `src/slices/` (`mutation`, `query`, `reaction` modules).
-- Public server functions remain in `src/server/powersync.ts`.
+```bash
+bun run test:e2e:headless
+```

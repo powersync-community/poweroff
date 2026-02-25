@@ -24,10 +24,14 @@ client_auth:
 sync_rules:
   content: |
     bucket_definitions:
-      global_data:
+      demo_data:
         data:
           - SELECT * FROM app_user
-          - SELECT * FROM work_order
-          - SELECT * FROM work_order_note
-          - SELECT * FROM part_usage_event
-          - SELECT * FROM conflict_record
+          - SELECT * FROM ticket
+          - SELECT * FROM ticket_assignment
+          - SELECT * FROM ticket_comment
+          - SELECT * FROM ticket_attachment_url
+          - SELECT * FROM ticket_link
+          - SELECT * FROM ticket_description_update
+          - SELECT * FROM ticket_conflict
+          - SELECT * FROM ticket_activity

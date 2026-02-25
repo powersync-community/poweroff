@@ -34,66 +34,55 @@ function fail(message) {
     }
     result.checks.push('Home route reachable');
 
-    await page.waitForSelector('text=WORK ORDERS', { timeout: 15000 });
-    await page.waitForSelector('text=SYNC ACTIVITY', { timeout: 10000 });
-    await page.waitForSelector('text=CONFLICT INBOX', { timeout: 10000 });
-    result.checks.push('Core sections rendered');
+    await page.waitForSelector('text=Offline Ticket Demo', { timeout: 15000 });
+    await page.waitForSelector('text=Last Write Wins', { timeout: 10000 });
+    result.checks.push('Strategy landing page renders');
 
-    const desktopShot = '/tmp/workorders-e2e-desktop.png';
+    await page.getByRole('link', { name: 'Last Write Wins' }).first().click();
+    await page.waitForSelector('text=Sync Activity', { timeout: 10000 });
+    await page.waitForSelector('text=Pending queue:', { timeout: 10000 });
+    result.checks.push('LWW route renders with core panels');
+
+    const desktopShot = '/tmp/ticket-demo-e2e-desktop.png';
     await page.screenshot({ path: desktopShot, fullPage: true });
     result.screenshots.push(desktopShot);
 
-    const networkToggle = page.getByRole('button', { name: /Go Offline|Reconnect/i });
+    const networkToggle = page.getByRole('button', { name: /Online \(Go Offline\)|Offline \(Reconnect\)/i });
     await networkToggle.click();
-    await page.waitForSelector('text=Offline', { timeout: 10000 });
+    await page.waitForSelector('text=Offline (Reconnect)', { timeout: 10000 });
     result.checks.push('Offline toggle works');
 
     await networkToggle.click();
-    await page.waitForSelector('text=Online', { timeout: 10000 });
+    await page.waitForSelector('text=Online (Go Offline)', { timeout: 10000 });
     result.checks.push('Reconnect toggle works');
 
-    await page.getByRole('button', { name: 'Manager View' }).click();
-    await page.waitForSelector('text=Role: manager', { timeout: 10000 });
-    result.checks.push('Manager role switch works');
-
-    await page.getByRole('button', { name: 'Tech View' }).click();
-    await page.waitForSelector('text=Role: tech', { timeout: 10000 });
-    result.checks.push('Tech role switch works');
-
-    const aboutResponse = await page.goto(`${TARGET_URL}/about`, {
-      waitUntil: 'domcontentloaded',
-      timeout: 30000,
-    });
-    if (!aboutResponse || aboutResponse.status() >= 400) {
-      fail(`About route failed: ${aboutResponse ? aboutResponse.status() : 'none'}`);
-    }
-    await page.waitForSelector('text=Offline Work Order Board Demo', { timeout: 10000 });
-    result.checks.push('About route renders');
-
-    await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-
-    const workOrderButtons = page.locator('aside button');
+    const ticketButtons = page.locator('aside button');
     let count = 0;
     for (let i = 0; i < 20; i++) {
-      count = await workOrderButtons.count();
+      count = await ticketButtons.count();
       if (count > 0) break;
       await page.waitForTimeout(500);
     }
+
     if (count > 0) {
-      await workOrderButtons.first().click();
-      await page.waitForSelector('text=Work Order Detail', { timeout: 10000 });
-      result.checks.push(`Work order selection works (${count} listed)`);
+      await ticketButtons.first().click();
+      await page.waitForSelector('text=Ticket Detail', { timeout: 10000 });
+      result.checks.push(`Ticket selection works (${count} listed)`);
 
       const saveButton = page.getByRole('button', { name: 'Save Fields' });
       await saveButton.click();
       result.checks.push('Save fields action callable');
     } else {
-      result.warnings.push('No work orders were synced; mutation-path checks were limited.');
+      result.warnings.push('No tickets were synced; mutation-path checks were limited.');
     }
+
+    await page.goto(`${TARGET_URL}/demo/crdt`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForSelector('text=Description (CRDT)', { timeout: 10000 });
+    result.checks.push('CRDT route renders');
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(600);
-    const mobileShot = '/tmp/workorders-e2e-mobile.png';
+    const mobileShot = '/tmp/ticket-demo-e2e-mobile.png';
     await page.screenshot({ path: mobileShot, fullPage: true });
     result.screenshots.push(mobileShot);
     result.checks.push('Mobile rendering captured');
@@ -102,7 +91,7 @@ function fail(message) {
     console.log(JSON.stringify(result, null, 2));
     console.log('E2E_RESULTS_END');
   } catch (error) {
-    const failShot = '/tmp/workorders-e2e-failure.png';
+    const failShot = '/tmp/ticket-demo-e2e-failure.png';
     try {
       await page.screenshot({ path: failShot, fullPage: true });
       result.screenshots.push(failShot);

@@ -4,48 +4,75 @@ import { z } from "zod";
 import {
   getPowerSync,
   powerSyncDb,
-  workOrderSchema,
+  ticketSchema,
 } from "~/lib/powersync.client";
-
-export type AppDatabase = (typeof workOrderSchema)["types"];
 
 const textColumn = z.union([z.string(), z.null(), z.undefined()]);
 const intColumn = z.union([z.number(), z.null(), z.undefined()]);
 
-const workOrderZodSchema = z.object({
+const appUserSchema = z.object({
+  id: z.string(),
+  name: textColumn,
+});
+
+const ticketRowSchema = z.object({
   id: z.string(),
   title: textColumn,
-  priority: textColumn,
+  description: textColumn,
   status: textColumn,
-  assignee_id: textColumn,
-  site_contact_phone: textColumn,
   deleted_at: textColumn,
   created_at: textColumn,
   updated_at: textColumn,
   version: intColumn,
 });
 
-const workOrderNoteZodSchema = z.object({
+const ticketAssignmentSchema = z.object({
   id: z.string(),
-  work_order_id: textColumn,
-  crdt_payload: textColumn,
-  updated_by: textColumn,
-  updated_at: textColumn,
+  ticket_id: textColumn,
+  user_id: textColumn,
+  deleted_at: textColumn,
+  created_at: textColumn,
 });
 
-const partUsageEventZodSchema = z.object({
+const ticketCommentSchema = z.object({
   id: z.string(),
-  work_order_id: textColumn,
-  part_sku: textColumn,
-  qty_delta: intColumn,
+  ticket_id: textColumn,
+  body: textColumn,
+  created_by: textColumn,
+  deleted_at: textColumn,
+  created_at: textColumn,
+});
+
+const ticketAttachmentSchema = z.object({
+  id: z.string(),
+  ticket_id: textColumn,
+  url: textColumn,
+  url_hash: textColumn,
+  created_by: textColumn,
+  deleted_at: textColumn,
+  created_at: textColumn,
+});
+
+const ticketLinkSchema = z.object({
+  id: z.string(),
+  ticket_id: textColumn,
+  url: textColumn,
+  created_by: textColumn,
+  deleted_at: textColumn,
+  created_at: textColumn,
+});
+
+const ticketDescriptionUpdateSchema = z.object({
+  id: z.string(),
+  ticket_id: textColumn,
+  update_b64: textColumn,
   created_by: textColumn,
   created_at: textColumn,
 });
 
-const conflictRecordZodSchema = z.object({
+const ticketConflictSchema = z.object({
   id: z.string(),
-  entity_type: textColumn,
-  entity_id: textColumn,
+  ticket_id: textColumn,
   field_name: textColumn,
   local_value: textColumn,
   server_value: textColumn,
@@ -56,48 +83,118 @@ const conflictRecordZodSchema = z.object({
   resolved_at: textColumn,
 });
 
-export const workOrdersCollection = createCollection(
+const ticketActivitySchema = z.object({
+  id: z.string(),
+  ticket_id: textColumn,
+  action: textColumn,
+  field_name: textColumn,
+  details: textColumn,
+  created_by: textColumn,
+  created_at: textColumn,
+});
+
+export const appUsersCollection = createCollection(
   powerSyncCollectionOptions({
-    id: "work-orders",
+    id: "app-users",
     database: powerSyncDb,
-    table: workOrderSchema.props.work_order,
-    schema: workOrderZodSchema,
+    table: ticketSchema.props.app_user,
+    schema: appUserSchema,
     onDeserializationError(err) {
       console.error(err);
     },
   }),
 );
 
-export const workOrderNotesCollection = createCollection(
+export const ticketsCollection = createCollection(
   powerSyncCollectionOptions({
-    id: "work-order-notes",
+    id: "tickets",
     database: powerSyncDb,
-    table: workOrderSchema.props.work_order_note,
-    schema: workOrderNoteZodSchema,
+    table: ticketSchema.props.ticket,
+    schema: ticketRowSchema,
     onDeserializationError(err) {
       console.error(err);
     },
   }),
 );
 
-export const partUsageEventsCollection = createCollection(
+export const ticketAssignmentsCollection = createCollection(
   powerSyncCollectionOptions({
-    id: "part-usage-events",
+    id: "ticket-assignments",
     database: powerSyncDb,
-    table: workOrderSchema.props.part_usage_event,
-    schema: partUsageEventZodSchema,
+    table: ticketSchema.props.ticket_assignment,
+    schema: ticketAssignmentSchema,
     onDeserializationError(err) {
       console.error(err);
     },
   }),
 );
 
-export const conflictRecordsCollection = createCollection(
+export const ticketCommentsCollection = createCollection(
   powerSyncCollectionOptions({
-    id: "conflict-records",
+    id: "ticket-comments",
     database: powerSyncDb,
-    table: workOrderSchema.props.conflict_record,
-    schema: conflictRecordZodSchema,
+    table: ticketSchema.props.ticket_comment,
+    schema: ticketCommentSchema,
+    onDeserializationError(err) {
+      console.error(err);
+    },
+  }),
+);
+
+export const ticketAttachmentUrlsCollection = createCollection(
+  powerSyncCollectionOptions({
+    id: "ticket-attachment-urls",
+    database: powerSyncDb,
+    table: ticketSchema.props.ticket_attachment_url,
+    schema: ticketAttachmentSchema,
+    onDeserializationError(err) {
+      console.error(err);
+    },
+  }),
+);
+
+export const ticketLinksCollection = createCollection(
+  powerSyncCollectionOptions({
+    id: "ticket-links",
+    database: powerSyncDb,
+    table: ticketSchema.props.ticket_link,
+    schema: ticketLinkSchema,
+    onDeserializationError(err) {
+      console.error(err);
+    },
+  }),
+);
+
+export const ticketDescriptionUpdatesCollection = createCollection(
+  powerSyncCollectionOptions({
+    id: "ticket-description-updates",
+    database: powerSyncDb,
+    table: ticketSchema.props.ticket_description_update,
+    schema: ticketDescriptionUpdateSchema,
+    onDeserializationError(err) {
+      console.error(err);
+    },
+  }),
+);
+
+export const ticketConflictsCollection = createCollection(
+  powerSyncCollectionOptions({
+    id: "ticket-conflicts",
+    database: powerSyncDb,
+    table: ticketSchema.props.ticket_conflict,
+    schema: ticketConflictSchema,
+    onDeserializationError(err) {
+      console.error(err);
+    },
+  }),
+);
+
+export const ticketActivitiesCollection = createCollection(
+  powerSyncCollectionOptions({
+    id: "ticket-activities",
+    database: powerSyncDb,
+    table: ticketSchema.props.ticket_activity,
+    schema: ticketActivitySchema,
     onDeserializationError(err) {
       console.error(err);
     },
@@ -111,10 +208,15 @@ export async function ensureTanStackDbReady() {
     readyPromise = (async () => {
       await getPowerSync();
       await Promise.all([
-        workOrdersCollection.stateWhenReady(),
-        workOrderNotesCollection.stateWhenReady(),
-        partUsageEventsCollection.stateWhenReady(),
-        conflictRecordsCollection.stateWhenReady(),
+        appUsersCollection.stateWhenReady(),
+        ticketsCollection.stateWhenReady(),
+        ticketAssignmentsCollection.stateWhenReady(),
+        ticketCommentsCollection.stateWhenReady(),
+        ticketAttachmentUrlsCollection.stateWhenReady(),
+        ticketLinksCollection.stateWhenReady(),
+        ticketDescriptionUpdatesCollection.stateWhenReady(),
+        ticketConflictsCollection.stateWhenReady(),
+        ticketActivitiesCollection.stateWhenReady(),
       ]);
     })();
   }
