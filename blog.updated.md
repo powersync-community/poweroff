@@ -38,21 +38,21 @@ That doesn’t mean offline writes are impossible — it means you must choose a
 
 ### A Concrete Conflict Scenario
 
-Imagine a work order’s phone number starts as `A`.
+Imagine a record’s data value starts as `A`.
 
-- Tech goes offline and changes it to `C`.
-- Manager (online) changes it to `B`.
-- Tech reconnects later and uploads their queued write.
+- User 1 goes offline and changes the value to `C`.
+- User 2 (online) changes the value to `B`.
+- User 1 reconnects later and uploads their queued write.
 
-If the backend blindly applies queued writes “as they arrive”, the final value might become `C`, silently losing the manager’s newer update.
+If the backend blindly applies queued writes “as they arrive”, the final data value might become `C`, silently losing User 2’s newer update.
 
-So the real question becomes: *what outcome does the business want here?* That answer varies by field and workflow.
+So the real question becomes: _what outcome does the business want here?_ That answer varies by field and workflow.
 
-![Arrival-order wins: offline write overwrites newer server write](./blog-images/LWW.png)
+![Arrival-order wins: offline stage update overwrites newer server update](./blog-images/LWW.png)
 
 ## The Stack: TanStack DB + PowerSync (Who Does What)
 
-In this demo app (an offline work order board), the responsibilities are split cleanly:
+In this demo app (an offline festival ops board), the responsibilities are split cleanly:
 
 - **PowerSync**
   - Owns the local database schema and storage (SQLite in the browser / device).
@@ -60,7 +60,7 @@ In this demo app (an offline work order board), the responsibilities are split c
   - Maintains a durable CRUD queue for client → server writes.
   - Calls your `uploadData` hook to push queued operations to your backend.
 - **TanStack DB**
-  - Provides *reactive collections* over the local PowerSync-backed tables.
+  - Provides _reactive collections_ over the local PowerSync-backed tables.
   - Powers live queries in the UI (SolidJS) without re-implementing caching logic.
 
 Here’s the architecture at a glance:
@@ -78,8 +78,11 @@ flowchart LR
 
 PowerSync defines the local schema and the connector that uploads queued operations:
 
+The code still uses `work-order` naming in identifiers and paths; the Festival Ops mapping is conceptual and 1:1.
+
 ```ts
 // src/lib/powersync.client.ts (demo)
+// In Festival Ops terms, this connector syncs queued festival task changes.
 class WorkOrderConnector {
   async uploadData(database: AbstractPowerSyncDatabase) {
     while (true) {
@@ -94,7 +97,8 @@ class WorkOrderConnector {
       }));
 
       const response = await uploadToServer(payload);
-      if (!response.success) throw new Error(response.error ?? "write_batch_failed");
+      if (!response.success)
+        throw new Error(response.error ?? "write_batch_failed");
       await tx.complete();
     }
   }
@@ -105,6 +109,7 @@ TanStack DB wraps the PowerSync tables as reactive collections for the UI:
 
 ```ts
 // src/lib/tanstack-db.ts (demo)
+// `workOrdersCollection` is the backing collection for festival tasks in this demo.
 export const workOrdersCollection = createCollection(
   powerSyncCollectionOptions({
     id: "work-orders",
@@ -115,21 +120,21 @@ export const workOrdersCollection = createCollection(
 );
 ```
 
-## Demo: A Work Order Board with Multiple Conflict Strategies
+## Demo: A Festival Ops Board with Multiple Conflict Strategies
 
 The demo intentionally uses **different strategies per data type**, because “one strategy for everything” is where offline UX tends to break down.
 
-> (Screenshot) Work order list + detail editor
+> (Screenshot) Festival task list + detail editor
 
 ### A decision matrix (rule of thumb)
 
-| Data / operation | Typical requirement | Recommended strategy | Demo outcome |
-| --- | --- | --- | --- |
-| `title`, `priority` | Fast edits, low risk | Last-write-wins | `applied` |
-| `note` / collaborative text | Preserve both users’ intent | CRDT/OT (or merge) | `merged` |
-| Inventory-like counters | Never go below zero | Domain rules (reject invalid ops) | `applied` / `rejected` |
-| Status transitions / delete | Enforce workflow/permissions | Restrict + validate server-side | `rejected` (when invalid) |
-| Sensitive fields (phone) | Must not silently lose updates | Manual review + resolution UI | `needs_review` |
+| Data / operation                           | Typical requirement            | Recommended strategy              | Demo outcome              |
+| ------------------------------------------ | ------------------------------ | --------------------------------- | ------------------------- |
+| Festival task `title`, `urgency`           | Fast edits, low risk           | Last-write-wins                   | `applied`                 |
+| Crew handoff `note` / collaborative text   | Preserve both users’ intent    | CRDT/OT (or merge)                | `merged`                  |
+| Battery/cable stock counters               | Never go below zero            | Domain rules (reject invalid ops) | `applied` / `rejected`    |
+| Task state transitions / delete            | Enforce workflow/permissions   | Restrict + validate server-side   | `rejected` (when invalid) |
+| Sensitive contacts (artist/vendor hotline) | Must not silently lose updates | Manual review + resolution UI     | `needs_review`            |
 
 ## The Default Offline Write Path (and Why It’s Not Enough)
 
@@ -151,6 +156,7 @@ The demo computes an `opKey` hash per operation and stores it in a `sync_operati
 
 ```ts
 // src/slices/sync-engine/reaction.process-write-batch.server.ts (demo)
+// The op key makes retries idempotent across reconnects/replays.
 function toOpKey(op, session) {
   const payload = JSON.stringify({
     op: op.op,
@@ -168,7 +174,7 @@ function toOpKey(op, session) {
 
 Every operation returns a result code (e.g. `applied`, `merged`, `rejected`, `needs_review`) so the UI can show an activity timeline instead of leaving users guessing.
 
-> (Screenshot) Sync activity timeline + conflict inbox
+> (Screenshot) Sync activity timeline + Conflict Inbox
 
 ## Designing for Conflicts (Strategies That Scale)
 
@@ -176,24 +182,25 @@ Every operation returns a result code (e.g. `applied`, `merged`, `rejected`, `ne
 
 The easiest way to avoid bad conflicts is to not allow the riskiest operations offline (or at all for some roles).
 
-In the demo, delete and certain status transitions are restricted server-side:
+In the demo, delete and certain task state transitions are restricted server-side:
 
-![Restricting offline writes avoids certain conflicts](./blog-images/Restrict.png)
+![Restricting risky offline festival actions avoids certain conflicts](./blog-images/Restrict.png)
 
 ```ts
 // src/slices/work-order/mutation.server.ts (demo)
+// Role/permission checks gate risky task-state transitions and deletes.
 if (op.op === UpdateType.DELETE && session.role !== "manager") {
   return { result: "rejected", reasonCode: "restricted_delete", ... };
 }
 ```
 
-This trades off capability for simplicity, but keeps the app usable offline for “safe” work.
+This trades off capability for simplicity, but keeps the app usable offline for “safe” crew actions.
 
 ### 2) Audit / activity log
 
-Sometimes last-write-wins is acceptable *if* the history is visible and you can explain what happened.
+Sometimes last-write-wins is acceptable _if_ the history is visible and you can explain what happened.
 
-![Last-write-wins with an audit trail](./blog-images/Audit-Log.png)
+![Last-write-wins with an audit trail for festival operations](./blog-images/Audit-Log.png)
 
 Even a lightweight “operation results” log (like the demo’s `sync_operation` + UI timeline) dramatically reduces support/debug time when something surprises a user.
 
@@ -201,29 +208,31 @@ Even a lightweight “operation results” log (like the demo’s `sync_operatio
 
 Some conflicts aren’t “two edits” — they’re business invariants.
 
-In the demo, `part_usage_event` is modeled as an **append-only domain event** with an inventory check. If applying an offline event would make inventory negative, it is rejected:
+In the demo, `part_usage_event` is modeled as an **append-only domain event** with an inventory check. Think of it as gear consumption events for batteries and cables. If applying an offline event would make inventory negative, it is rejected:
 
-![Domain-specific resolution keeps invariants true](./blog-images/Domain-Specific.png)
+![Domain-specific resolution keeps festival inventory invariants true](./blog-images/Domain-Specific.png)
 
 ```ts
 // src/slices/part-usage-event/mutation.server.ts (demo)
+// Same pattern applies to festival gear consumption invariants.
 if (onHand + qtyDelta < 0) {
   return { result: "rejected", reasonCode: "inventory_underflow", ... };
 }
 ```
 
-This is predictable, testable, and matches what users often expect (“you can’t use parts you don’t have”).
+This is predictable, testable, and matches what crews often expect (“you can’t use gear you don’t have”).
 
 ### 4) Manual resolution (conflict inbox)
 
-For sensitive fields, the safest move is to record a conflict and let a human decide.
+For sensitive fields like artist contacts or vendor hotlines, the safest move is to record a conflict and let a human decide.
 
-In the demo, phone updates can create a `conflict_record` instead of silently overwriting. A manager can then pick “keep local”, “keep server”, or enter a custom value:
+In the demo, contact updates can create a `conflict_record` instead of silently overwriting. A Festival Lead can then pick “keep local”, “keep server”, or enter a custom value:
 
-![Manual resolution: ask a human which value should win](./blog-images/Manual.png)
+![Manual resolution: ask a human which contact value should win](./blog-images/Manual.png)
 
 ```ts
 // src/slices/conflict-record/mutation.server.ts (demo)
+// Manual resolver: keep local, keep server, or choose a custom value.
 if (strategy === "local") value = conflict.local_value?.value ?? null;
 if (strategy === "server") value = conflict.server_value?.value ?? null;
 if (strategy === "custom") value = customValue ?? null;
@@ -233,7 +242,7 @@ if (strategy === "custom") value = customValue ?? null;
 
 For collaborative documents, “pick a winner” is usually the wrong UX. CRDTs and OT are designed to merge concurrent edits.
 
-![CRDT-style merge produces a combined state](./blog-images/CRDT.png)
+![CRDT-style merge produces a combined crew note state](./blog-images/CRDT.png)
 
 The demo uses a deliberately simple merge for `work_order_note.crdt_payload` (line-based uniqueness) to illustrate the shape of the solution. In production, you’d typically reach for something like Yjs or Automerge depending on your requirements and architecture.
 
@@ -261,9 +270,9 @@ bun dev
 
 Then:
 
-1. Switch to Tech, go offline, make edits, add a note, add part usage events.
+1. Switch to Stage Tech, go offline, edit festival tasks, add a crew note, and record gear usage events.
 2. Reconnect and observe which ops are `applied`, `merged`, `rejected`, or `needs_review`.
-3. Switch to Manager and resolve phone conflicts in the Conflict Inbox.
+3. Switch to Festival Lead and resolve artist/vendor contact conflicts in the Conflict Inbox.
 
 ## References
 

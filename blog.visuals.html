@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Offline-First Blog Visuals (Remake)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Fraunces:opsz,wght@9..144,700;9..144,800&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #17161f;
+        --ink-soft: #2f2d3b;
+        --frame-border: rgba(24, 26, 38, 0.16);
+        --paper: #ffffff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: "Space Grotesk", "Avenir Next", sans-serif;
+        background:
+          radial-gradient(1000px 620px at 8% 0%, #fdeccf 0%, transparent 62%),
+          radial-gradient(900px 560px at 96% 22%, #dbe9ff 0%, transparent 60%),
+          linear-gradient(180deg, #f6f7fb 0%, #eceff5 100%);
+      }
+
+      .wrap {
+        width: min(1600px, 95vw);
+        margin: 28px auto 56px;
+      }
+
+      .intro {
+        margin: 0 0 18px;
+        padding: 0 4px;
+      }
+
+      .intro h1 {
+        margin: 0;
+        font-family: "Fraunces", Georgia, serif;
+        font-size: clamp(1.8rem, 2.2vw, 2.8rem);
+        letter-spacing: 0.01em;
+      }
+
+      .intro p {
+        margin: 10px 0 0;
+        color: var(--ink-soft);
+        font-size: clamp(0.95rem, 1.1vw, 1.1rem);
+      }
+
+      .grid {
+        display: grid;
+        gap: 28px;
+      }
+
+      .frame {
+        position: relative;
+        aspect-ratio: 16 / 9;
+        min-height: 540px;
+        border-radius: 30px;
+        overflow: hidden;
+        border: 1px solid var(--frame-border);
+        box-shadow:
+          0 26px 58px rgba(18, 22, 36, 0.14),
+          0 2px 6px rgba(18, 22, 36, 0.1);
+        background: var(--paper);
+      }
+
+      .frame::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .theme-architecture::before {
+        background:
+          radial-gradient(580px 280px at 10% 10%, rgba(255, 235, 206, 0.9), transparent 70%),
+          radial-gradient(620px 320px at 88% 10%, rgba(208, 231, 255, 0.85), transparent 74%),
+          linear-gradient(150deg, rgba(255, 255, 255, 0.88), rgba(250, 253, 255, 0.88));
+      }
+
+      .theme-amber::before {
+        background:
+          radial-gradient(650px 320px at 10% 10%, rgba(255, 212, 165, 0.45), transparent 68%),
+          radial-gradient(700px 360px at 98% 85%, rgba(255, 167, 119, 0.35), transparent 74%),
+          linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(255, 248, 240, 0.9));
+      }
+
+      .theme-blue::before {
+        background:
+          radial-gradient(640px 300px at 8% 12%, rgba(184, 220, 255, 0.42), transparent 68%),
+          radial-gradient(680px 320px at 94% 84%, rgba(135, 173, 255, 0.34), transparent 72%),
+          linear-gradient(150deg, rgba(255, 255, 255, 0.92), rgba(242, 248, 255, 0.92));
+      }
+
+      .theme-emerald::before {
+        background:
+          radial-gradient(660px 340px at 10% 8%, rgba(177, 233, 205, 0.45), transparent 70%),
+          radial-gradient(700px 360px at 94% 90%, rgba(111, 212, 176, 0.32), transparent 72%),
+          linear-gradient(150deg, rgba(255, 255, 255, 0.92), rgba(240, 255, 248, 0.92));
+      }
+
+      .theme-coral::before {
+        background:
+          radial-gradient(620px 300px at 12% 10%, rgba(255, 194, 175, 0.45), transparent 68%),
+          radial-gradient(710px 350px at 94% 88%, rgba(255, 157, 144, 0.34), transparent 74%),
+          linear-gradient(150deg, rgba(255, 255, 255, 0.92), rgba(255, 245, 245, 0.92));
+      }
+
+      .theme-violet::before {
+        background:
+          radial-gradient(620px 300px at 8% 10%, rgba(216, 202, 255, 0.4), transparent 70%),
+          radial-gradient(720px 360px at 96% 86%, rgba(162, 176, 255, 0.34), transparent 74%),
+          linear-gradient(150deg, rgba(255, 255, 255, 0.92), rgba(244, 245, 255, 0.92));
+      }
+
+      .badge {
+        position: absolute;
+        top: 18px;
+        left: 20px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: #1f2937;
+        background: rgba(255, 255, 255, 0.75);
+        backdrop-filter: blur(3px);
+        border: 1px solid rgba(31, 41, 55, 0.16);
+      }
+
+      .frame svg {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: block;
+        z-index: 1;
+      }
+
+      .diagram-title {
+        font-family: "Fraunces", Georgia, serif;
+        font-size: 50px;
+        font-weight: 800;
+        fill: #14131d;
+        text-anchor: middle;
+        letter-spacing: 0.01em;
+      }
+
+      .diagram-subtitle {
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 22px;
+        font-weight: 600;
+        fill: #2b2b3a;
+        text-anchor: middle;
+      }
+
+      .event {
+        font-family: "Caveat", cursive;
+        font-size: 54px;
+        fill: #14131d;
+      }
+
+      .small-event {
+        font-family: "Caveat", cursive;
+        font-size: 44px;
+        fill: #14131d;
+      }
+
+      .note {
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 17px;
+        font-weight: 600;
+        fill: #202233;
+      }
+
+      .callout {
+        fill: rgba(255, 255, 255, 0.82);
+        stroke: rgba(20, 19, 29, 0.25);
+        stroke-width: 2;
+      }
+
+      .axis {
+        stroke: #17161f;
+        stroke-width: 5;
+        stroke-linecap: round;
+      }
+
+      .branch {
+        fill: none;
+        stroke: #17161f;
+        stroke-width: 5;
+        stroke-linejoin: round;
+        stroke-linecap: round;
+      }
+
+      .offline-line {
+        stroke: #22212a;
+        stroke-width: 3;
+        stroke-dasharray: 14 10;
+        stroke-linecap: round;
+        opacity: 0.95;
+      }
+
+      .box {
+        fill: rgba(255, 255, 255, 0.88);
+        stroke: #242638;
+        stroke-width: 2.5;
+      }
+
+      .box-label {
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 20px;
+        font-weight: 700;
+        fill: #131522;
+        text-anchor: middle;
+      }
+
+      .box-sub {
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 16px;
+        font-weight: 600;
+        fill: #2a2e40;
+        text-anchor: middle;
+      }
+
+      .edge-label {
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 16px;
+        font-weight: 600;
+        fill: #30344a;
+      }
+
+      @media (max-width: 1200px) {
+        .wrap {
+          width: 97vw;
+        }
+
+        .grid {
+          gap: 20px;
+        }
+
+        .frame {
+          min-height: 420px;
+          border-radius: 20px;
+        }
+
+        .badge {
+          top: 12px;
+          left: 14px;
+          font-size: 11px;
+          padding: 6px 12px;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .frame {
+          min-height: 280px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="intro">
+        <h1>Offline-First Blog Visuals and Flowcharts (Remade)</h1>
+        <p>Each panel is 16:9 and optimized for browser screenshots.</p>
+      </header>
+
+      <main class="grid">
+        <section class="frame theme-architecture" id="architecture-flowchart">
+          <span class="badge">Flowchart · Stack Architecture</span>
+          <svg viewBox="0 0 1600 900" role="img" aria-label="TanStack DB and PowerSync architecture flowchart">
+            <defs>
+              <marker id="arrow-arch" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#17161f"></path>
+              </marker>
+            </defs>
+
+            <text class="diagram-title" x="800" y="112">TanStack DB + PowerSync</text>
+            <text class="diagram-subtitle" x="800" y="158">Local-first reads, queued writes, backend source of truth</text>
+
+            <rect class="box" x="90" y="300" width="220" height="130" rx="22"></rect>
+            <text class="box-label" x="200" y="355">SolidJS UI</text>
+            <text class="box-sub" x="200" y="388">Work Order Board</text>
+
+            <rect class="box" x="380" y="300" width="260" height="130" rx="22"></rect>
+            <text class="box-label" x="510" y="348">TanStack DB</text>
+            <text class="box-sub" x="510" y="381">Live Collections</text>
+            <text class="box-sub" x="510" y="409">Reactive Queries</text>
+
+            <rect class="box" x="710" y="300" width="270" height="130" rx="22"></rect>
+            <text class="box-label" x="845" y="343">PowerSync</text>
+            <text class="box-label" x="845" y="370">Local DB</text>
+            <text class="box-sub" x="845" y="399">SQLite / IndexedDB</text>
+            <text class="box-sub" x="845" y="422">Durable Queue</text>
+
+            <rect class="box" x="1040" y="300" width="250" height="130" rx="22"></rect>
+            <text class="box-label" x="1165" y="343">PowerSync</text>
+            <text class="box-label" x="1165" y="370">Service</text>
+            <text class="box-sub" x="1165" y="399">Replication Layer</text>
+            <text class="box-sub" x="1165" y="422">Sync Engine</text>
+
+            <rect class="box" x="1320" y="300" width="220" height="130" rx="22"></rect>
+            <text class="box-label" x="1430" y="355">Backend API</text>
+            <text class="box-sub" x="1430" y="388">Process Writes</text>
+
+            <rect class="box" x="1320" y="560" width="220" height="130" rx="22"></rect>
+            <text class="box-label" x="1430" y="615">Postgres</text>
+            <text class="box-sub" x="1430" y="648">Source of Truth</text>
+
+            <line class="axis" x1="310" y1="365" x2="380" y2="365" marker-end="url(#arrow-arch)"></line>
+            <line class="axis" x1="640" y1="365" x2="710" y2="365" marker-end="url(#arrow-arch)"></line>
+
+            <line class="axis" x1="980" y1="344" x2="1040" y2="344" marker-end="url(#arrow-arch)"></line>
+            <line class="axis" x1="1040" y1="386" x2="980" y2="386" marker-end="url(#arrow-arch)"></line>
+
+            <line class="axis" x1="1290" y1="344" x2="1320" y2="344" marker-end="url(#arrow-arch)"></line>
+            <line class="axis" x1="1320" y1="386" x2="1290" y2="386" marker-end="url(#arrow-arch)"></line>
+
+            <line class="axis" x1="1430" y1="430" x2="1430" y2="560" marker-end="url(#arrow-arch)"></line>
+
+            <text class="edge-label" x="1080" y="330">server → client</text>
+            <text class="edge-label" x="1090" y="428">queued writes</text>
+            <text class="edge-label" x="1350" y="330">uploadData</text>
+            <text class="edge-label" x="1450" y="506">authoritative state</text>
+
+            <rect class="callout" x="90" y="520" width="1160" height="170" rx="24"></rect>
+            <text class="note" x="130" y="585">PowerSync handles sync + durability. TanStack DB handles reactive local querying.</text>
+            <text class="note" x="130" y="628">Conflict policy is implemented in your backend write processing semantics.</text>
+          </svg>
+        </section>
+
+        <section class="frame theme-amber" id="arrival-order-lww">
+          <span class="badge">Visual · Arrival-Order LWW</span>
+          <svg viewBox="0 0 1600 900" role="img" aria-label="Arrival order last-write-wins conflict timeline">
+            <defs>
+              <marker id="arrow-lww-1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#17161f"></path>
+              </marker>
+            </defs>
+
+            <text class="diagram-title" x="800" y="120">Arrival-Order Last-Write-Wins</text>
+
+            <line class="axis" x1="150" y1="390" x2="1460" y2="390" marker-end="url(#arrow-lww-1)"></line>
+            <line class="offline-line" x1="40" y1="560" x2="1560" y2="560"></line>
+            <path class="branch" d="M360 390 L460 770 L1090 770 L1200 390" marker-end="url(#arrow-lww-1)"></path>
+
+            <text class="small-event" x="220" y="348">A</text>
+            <text class="small-event" x="700" y="350">A → B</text>
+            <text class="small-event" x="1250" y="350">B → C</text>
+            <text class="small-event" x="700" y="742">A → C</text>
+            <text class="small-event" x="128" y="602">offline</text>
+
+            <rect class="callout" x="1235" y="130" width="290" height="130" rx="22"></rect>
+            <text class="note" x="1265" y="194">Outcome: Final value = C</text>
+            <text class="note" x="1265" y="228">Manager update B is lost</text>
+          </svg>
+        </section>
+
+        <section class="frame theme-blue" id="restrict-offline-writes">
+          <span class="badge">Visual · Restrict Risky Ops</span>
+          <svg viewBox="0 0 1600 900" role="img" aria-label="Restrict offline writes timeline">
+            <defs>
+              <marker id="arrow-rest-2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#17161f"></path>
+              </marker>
+            </defs>
+
+            <text class="diagram-title" x="800" y="120">Restrict Offline Writes</text>
+
+            <line class="axis" x1="150" y1="390" x2="1460" y2="390" marker-end="url(#arrow-rest-2)"></line>
+            <line class="offline-line" x1="40" y1="560" x2="1560" y2="560"></line>
+            <path class="branch" d="M360 390 L460 770 L1090 770 L1200 390" marker-end="url(#arrow-rest-2)"></path>
+
+            <text class="small-event" x="220" y="348">A</text>
+            <text class="small-event" x="700" y="350">A → B</text>
+            <text class="small-event" x="1310" y="350">B</text>
+            <text class="small-event" x="760" y="742">A</text>
+            <text class="small-event" x="128" y="602">offline</text>
+
+            <rect class="callout" x="1120" y="130" width="410" height="150" rx="22"></rect>
+            <text class="note" x="1150" y="194">Risky offline op is rejected</text>
+            <text class="note" x="1150" y="228">Final value remains B</text>
+            <text class="note" x="1150" y="262">Safer behavior, fewer destructive conflicts</text>
+          </svg>
+        </section>
+
+        <section class="frame theme-emerald" id="lww-with-audit">
+          <span class="badge">Visual · LWW + Audit Trail</span>
+          <svg viewBox="0 0 1600 900" role="img" aria-label="Last-write-wins with audit log timeline">
+            <defs>
+              <marker id="arrow-audit-3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#17161f"></path>
+              </marker>
+            </defs>
+
+            <text class="diagram-title" x="800" y="120">Last-Write-Wins with Audit Log</text>
+
+            <line class="axis" x1="150" y1="390" x2="1460" y2="390" marker-end="url(#arrow-audit-3)"></line>
+            <line class="offline-line" x1="40" y1="560" x2="1560" y2="560"></line>
+            <path class="branch" d="M360 390 L460 770 L1090 770 L1200 390" marker-end="url(#arrow-audit-3)"></path>
+
+            <text class="small-event" x="190" y="348">A (u1)</text>
+            <text class="small-event" x="670" y="350">A → B (u1)</text>
+            <text class="small-event" x="670" y="742">A → C (u2)</text>
+            <text class="small-event" x="128" y="602">offline</text>
+
+            <rect class="callout" x="1210" y="140" width="320" height="230" rx="24"></rect>
+            <text class="note" x="1240" y="198">Audit trail:</text>
+            <text class="note" x="1240" y="236">A (u1)</text>
+            <text class="note" x="1240" y="274">→ B (u1)</text>
+            <text class="note" x="1240" y="312">→ C (u2)</text>
+
+            <rect class="callout" x="1080" y="658" width="440" height="122" rx="22"></rect>
+            <text class="note" x="1110" y="723">Final value can be C, but every step stays visible.</text>
+          </svg>
+        </section>
+
+        <section class="frame theme-coral" id="domain-specific-resolution">
+          <span class="badge">Visual · Domain Rule Resolution</span>
+          <svg viewBox="0 0 1600 900" role="img" aria-label="Domain-specific conflict resolution timeline">
+            <defs>
+              <marker id="arrow-domain-4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#17161f"></path>
+              </marker>
+              <marker id="arrow-thin-domain-4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#1f2438"></path>
+              </marker>
+            </defs>
+
+            <text class="diagram-title" x="800" y="120">Domain-Specific Resolution</text>
+
+            <line class="axis" x1="150" y1="390" x2="1460" y2="390" marker-end="url(#arrow-domain-4)"></line>
+            <line class="offline-line" x1="40" y1="560" x2="1560" y2="560"></line>
+            <path class="branch" d="M360 390 L460 770 L1090 770 L1200 390" marker-end="url(#arrow-domain-4)"></path>
+
+            <text class="small-event" x="220" y="348">A</text>
+            <text class="small-event" x="710" y="350">A → B</text>
+            <text class="small-event" x="700" y="742">A → C</text>
+            <text class="small-event" x="128" y="602">offline</text>
+
+            <rect class="callout" x="1150" y="110" width="350" height="250" rx="24"></rect>
+            <text class="note" x="1180" y="170">Inventory check</text>
+            <rect class="box" x="1180" y="190" width="290" height="66" rx="16"></rect>
+            <text class="box-sub" x="1325" y="231">onHand + qtyDelta ≥ 0 ?</text>
+
+            <line class="axis" x1="1325" y1="256" x2="1325" y2="308" marker-end="url(#arrow-thin-domain-4)"></line>
+            <line class="axis" x1="1325" y1="308" x2="1410" y2="308" marker-end="url(#arrow-thin-domain-4)"></line>
+            <line class="axis" x1="1325" y1="308" x2="1240" y2="308" marker-end="url(#arrow-thin-domain-4)"></line>
+
+            <rect class="box" x="1410" y="282" width="92" height="52" rx="14"></rect>
+            <text class="box-sub" x="1456" y="317">apply B</text>
+            <rect class="box" x="1140" y="282" width="100" height="52" rx="14"></rect>
+            <text class="box-sub" x="1190" y="317">reject C</text>
+
+            <rect class="callout" x="1040" y="654" width="490" height="128" rx="22"></rect>
+            <text class="note" x="1070" y="718">Business invariants decide the outcome, not arrival order.</text>
+          </svg>
+        </section>
+
+        <section class="frame theme-violet" id="manual-resolution">
+          <span class="badge">Visual · Manual Conflict Resolution</span>
+          <svg viewBox="0 0 1600 900" role="img" aria-label="Manual resolution conflict timeline">
+            <defs>
+              <marker id="arrow-manual-5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#17161f"></path>
+              </marker>
+            </defs>
+
+            <text class="diagram-title" x="800" y="120">Manual Resolution</text>
+
+            <line class="axis" x1="150" y1="390" x2="1460" y2="390" marker-end="url(#arrow-manual-5)"></line>
+            <line class="offline-line" x1="40" y1="560" x2="1560" y2="560"></line>
+            <path class="branch" d="M360 390 L460 770 L1090 770 L1200 390" marker-end="url(#arrow-manual-5)"></path>
+
+            <text class="small-event" x="190" y="348">A (u1)</text>
+            <text class="small-event" x="710" y="350">A → B</text>
+            <text class="small-event" x="700" y="742">A → C</text>
+            <text class="small-event" x="128" y="602">offline</text>
+            <text class="small-event" x="1265" y="350">B or C?</text>
+
+            <rect class="callout" x="1060" y="624" width="470" height="170" rx="24"></rect>
+            <text class="note" x="1090" y="677">Conflict Inbox</text>
+            <rect class="box" x="1090" y="698" width="132" height="50" rx="14"></rect>
+            <text class="box-sub" x="1156" y="730">Keep server</text>
+            <rect class="box" x="1230" y="698" width="124" height="50" rx="14"></rect>
+            <text class="box-sub" x="1292" y="730">Keep local</text>
+            <rect class="box" x="1362" y="698" width="138" height="50" rx="14"></rect>
+            <text class="box-sub" x="1431" y="730">Custom value</text>
+          </svg>
+        </section>
+
+        <section class="frame theme-amber" id="crdt-merge">
+          <span class="badge">Visual · CRDT-Style Merge</span>
+          <svg viewBox="0 0 1600 900" role="img" aria-label="CRDT merge timeline">
+            <defs>
+              <marker id="arrow-crdt-6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#17161f"></path>
+              </marker>
+            </defs>
+
+            <text class="diagram-title" x="800" y="120">CRDT / Merge Semantics</text>
+
+            <line class="axis" x1="150" y1="390" x2="1460" y2="390" marker-end="url(#arrow-crdt-6)"></line>
+            <line class="offline-line" x1="40" y1="560" x2="1560" y2="560"></line>
+            <path class="branch" d="M360 390 L460 770 L1090 770 L1200 390" marker-end="url(#arrow-crdt-6)"></path>
+
+            <text class="small-event" x="190" y="348">A (u1)</text>
+            <text class="small-event" x="710" y="350">A → B</text>
+            <text class="small-event" x="700" y="742">A → C</text>
+            <text class="small-event" x="128" y="602">offline</text>
+            <text class="small-event" x="1260" y="350">A → BC</text>
+
+            <rect class="callout" x="1080" y="626" width="450" height="164" rx="24"></rect>
+            <text class="note" x="1110" y="678">Merged state includes both intents:</text>
+            <text class="note" x="1110" y="715">• line from B + line from C</text>
+            <text class="note" x="1110" y="752">• deterministic order, no silent overwrite</text>
+          </svg>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
