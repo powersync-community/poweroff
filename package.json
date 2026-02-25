@@ -17,8 +17,6 @@
   },
   "dependencies": {
     "@journeyapps/wa-sqlite": "^1.4.1",
-    "@mastra/core": "^0.23.1",
-    "@mastra/mcp": "^0.14.1",
     "@powersync/common": "^1.47.0",
     "@powersync/node": "^0.17.0",
     "@powersync/web": "^1.33.0",
