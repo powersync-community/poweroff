@@ -59,7 +59,9 @@ async function applyTicketOperation(
   const opData = (op.opData ?? {}) as Record<string, unknown>;
 
   if (op.op === UpdateType.DELETE) {
-    await queryInternal(`UPDATE ticket SET deleted_at = now() WHERE id = $1`, [op.id]);
+    await queryInternal(`UPDATE ticket SET deleted_at = now() WHERE id = $1`, [
+      op.id,
+    ]);
     await insertActivity({
       ticketId: op.id,
       action: "ticket_deleted",
@@ -158,7 +160,8 @@ async function applyTicketOperation(
 
     const incomingVersion = Number(opData.version);
     const isVersionConflict =
-      Number.isFinite(incomingVersion) && incomingVersion < Number(current.version);
+      Number.isFinite(incomingVersion) &&
+      incomingVersion < Number(current.version);
 
     if (isVersionConflict && nextTitle !== current.title) {
       const conflictInsert = await queryInternal(
@@ -209,7 +212,9 @@ async function applyTicketOperation(
   }
 
   if (updates.length > 0) {
-    const assignments = updates.map((update, idx) => `${update.field} = $${idx + 1}`);
+    const assignments = updates.map(
+      (update, idx) => `${update.field} = $${idx + 1}`,
+    );
     const params = updates.map((update) => update.value);
     params.push(op.id);
 
@@ -285,9 +290,10 @@ async function applyTicketAssignmentOperation(
   opKey: string,
 ): Promise<UploadResult> {
   if (op.op === UpdateType.DELETE) {
-    await queryInternal(`UPDATE ticket_assignment SET deleted_at = now() WHERE id = $1`, [
-      op.id,
-    ]);
+    await queryInternal(
+      `UPDATE ticket_assignment SET deleted_at = now() WHERE id = $1`,
+      [op.id],
+    );
 
     return {
       opKey,
@@ -343,7 +349,10 @@ async function applyTicketCommentOperation(
   opKey: string,
 ): Promise<UploadResult> {
   if (op.op === UpdateType.DELETE) {
-    await queryInternal(`UPDATE ticket_comment SET deleted_at = now() WHERE id = $1`, [op.id]);
+    await queryInternal(
+      `UPDATE ticket_comment SET deleted_at = now() WHERE id = $1`,
+      [op.id],
+    );
     return {
       opKey,
       table: op.table,
@@ -426,7 +435,8 @@ async function applyTicketAttachmentUrlOperation(
   }
 
   const urlHash =
-    asText(opData.url_hash).trim() || createHash("md5").update(url).digest("hex");
+    asText(opData.url_hash).trim() ||
+    createHash("md5").update(url).digest("hex");
 
   await withTransaction(async (client) => {
     await client.query(
@@ -467,7 +477,10 @@ async function applyTicketLinkOperation(
   opKey: string,
 ): Promise<UploadResult> {
   if (op.op === UpdateType.DELETE) {
-    await queryInternal(`UPDATE ticket_link SET deleted_at = now() WHERE id = $1`, [op.id]);
+    await queryInternal(
+      `UPDATE ticket_link SET deleted_at = now() WHERE id = $1`,
+      [op.id],
+    );
     return {
       opKey,
       table: op.table,
@@ -557,7 +570,10 @@ async function applyTicketDescriptionUpdateOperation(
     table: op.table,
     id: op.id,
     result: "applied",
-    reasonCode: (result.rowCount ?? 0) === 0 ? "description_update_duplicate" : "description_update_inserted",
+    reasonCode:
+      (result.rowCount ?? 0) === 0
+        ? "description_update_duplicate"
+        : "description_update_inserted",
   };
 }
 
@@ -649,7 +665,7 @@ async function resolveWithDedupe(
 export async function processWriteBatch(
   operations: CrudEntry[],
   session: ServerSession,
-): Promise<UploadResult[]> {
+) {
   const results: UploadResult[] = [];
 
   for (const operation of operations) {

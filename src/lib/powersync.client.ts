@@ -11,6 +11,31 @@ import {
 } from "~/lib/sync-activity";
 import { isSyncPaused } from "~/sync/control";
 
+type SerializableCrudEntry = {
+  op: string | number;
+  table: string;
+  id: string;
+  opData?: Record<string, unknown>;
+};
+
+function toSerializableCrud(
+  rows: Array<{
+    op: string | number;
+    table: string;
+    id: string;
+    opData?: Record<string, unknown>;
+  }>,
+): SerializableCrudEntry[] {
+  return rows.map((row) => ({
+    op: row.op,
+    table: String(row.table),
+    id: String(row.id),
+    opData: row.opData
+      ? (JSON.parse(JSON.stringify(row.opData)) as Record<string, unknown>)
+      : {},
+  }));
+}
+
 class TicketConnector implements PowerSyncBackendConnector {
   async fetchCredentials() {
     const { token, expiresAt } = await getPowerSyncToken();
@@ -46,8 +71,22 @@ class TicketConnector implements PowerSyncBackendConnector {
         break;
       }
 
-      const response = await uploadData(transaction.crud);
+      const serializableCrud = toSerializableCrud(transaction.crud as any[]);
+      console.log("[powersync] uploading crud transaction", {
+        size: serializableCrud.length,
+        first: serializableCrud[0]
+          ? {
+              op: serializableCrud[0].op,
+              table: serializableCrud[0].table,
+              id: serializableCrud[0].id,
+            }
+          : null,
+      });
+      console.trace("[powersync] upload trace");
+
+      const response = await uploadData(serializableCrud as any);
       if (!response.success) {
+        console.error("[powersync] upload response failed", response);
         throw new Error(response.error || "write_batch_failed");
       }
 
