@@ -1,6 +1,6 @@
 # Offline-First Apps with TanStack DB and PowerSync
 
-Offline-first apps are web/native applications that can be used while the user's device is offline.
+Offline-first apps are web/native applications that can be used while the user's device is offline. If you want a clean framing of where offline-first sits relative to local-first, this [local-first vs offline-first breakdown](https://www.powersync.com/blog/local-first-key-concepts-offline-first-vs-local-first) is a useful starting point.
 
 In my previous post, I presented some parameters of an ideal sync engine:
 
@@ -55,7 +55,7 @@ We can imagine scenario \#3 more concretely:
 
 Some data starts with the value of A. Someone goes offline and changes it to C, while another online user changes it to B. Once the offline user comes back online, the value might get changed to C, losing the change made by the online user.
 
-The simplest solution to this problem of conflicts is to disable writing to the database offline completely. As the famous saying goes, “in a distributed system, anything that **can** go wrong **will** go wrong”.
+The simplest solution to this problem of conflicts is to disable writing to the database offline completely. As the famous saying goes, “in a distributed system, anything that **can** go wrong **will** go wrong”. The [offline philosophy section from Supabase's Postgres CRDT post](https://supabase.com/blog/postgres-crdt#offline-philosophy) captures this tradeoff well: correctness is easier when you constrain what can happen while disconnected.
 
 No offline writes \=== \#3 can’t happen \=== no conflicts\!
 
@@ -73,14 +73,14 @@ This is a simple ticket tracking app with certain offline capabilities.
 
 **\---screenshot of ticket list view---**
 
-Users have access to a shared list of tickets that they work on. For the most part, it's just basic CRUD operations.
+Users have access to a shared list of tickets that they work on. For the most part, it's just basic CRUD operations, similar to the setup in this [Vue offline-first to-do tutorial](https://www.powersync.com/blog/vue-tutorial-offline-first-todo-app-with-supabase-and-powersync).
 
 There are certain operations that can be performed offline that have no way of running into conflicts.
 
 - Creating new tickets  
 - Adding/removing user assignments from tickets  
 - Adding/removing comments  
-- Adding/removing attachments
+- Adding/removing attachments (the [attachments helper write-up](https://www.powersync.com/blog/building-offline-first-file-uploads-with-powersync-attachments-helper) is a good reference for this pattern)
 
 **\---video showing these flows at once---**
 
@@ -88,7 +88,7 @@ Other operations like changes to title, description, and status are *usually* sa
 
 **\---video showing changing these fields at once---**
 
-This is the behavior we get with the simplest and default way to integrate PowerSync with an application backend:
+This is the behavior we get with the simplest and default way to integrate PowerSync with an application backend, documented in the [update conflict handling guide](https://docs.powersync.com/handling-writes/handling-update-conflicts):
 
 **\---show code for uploadData---**
 
@@ -130,7 +130,7 @@ This is not necessarily a technical decision — it should be up to the product/
 
 **\---show code for conflict detection and resolution---**
 
-Here we can detect the case when an offline user syncs with a pending change to the status field.
+Here we can detect the case when an offline user syncs with a pending change to the status field. PowerSync's [custom conflict resolution docs](https://docs.powersync.com/handling-writes/custom-conflict-resolution) cover the same pattern with server-side decision logic.
 
 This approach can provide automatic and predictable conflict resolution, but it's not a general solution and the actual logic of making a decision is going to vary a lot for different use cases.
 
@@ -163,13 +163,3 @@ While CRDT/OT can automatically handle any complexity of conflicts, it doesn't m
 As we walk through the various possible approaches to conflict resolution, it's important to keep in mind that very few applications will genuinely need to handle all these cases. However, almost every application has some features that can be used offline, and it is important for the tools we use to scale and support these needs as they come along. This is the pragmatic reality of building offline-first applications that PowerSync addresses. It provides a sensible default that satisfies the majority of use cases, while making it simple to opt-in to more advanced strategies as needed.
 
 ## \<CTA\>
-
-## References
-
-[https://supabase.com/blog/postgres-crdt\#offline-philosophy](https://supabase.com/blog/postgres-crdt#offline-philosophy)   
-[https://www.powersync.com/blog/vue-tutorial-offline-first-todo-app-with-supabase-and-powersync](https://www.powersync.com/blog/vue-tutorial-offline-first-todo-app-with-supabase-and-powersync)  
-[https://www.powersync.com/blog/building-offline-first-file-uploads-with-powersync-attachments-helper](https://www.powersync.com/blog/building-offline-first-file-uploads-with-powersync-attachments-helper)  
-[https://www.powersync.com/blog/offline-first-apps-made-simple-supabase-powersync](https://www.powersync.com/blog/offline-first-apps-made-simple-supabase-powersync)  
-[https://www.powersync.com/blog/local-first-key-concepts-offline-first-vs-local-first](https://www.powersync.com/blog/local-first-key-concepts-offline-first-vs-local-first)  
-[https://docs.powersync.com/handling-writes/handling-update-conflicts](https://docs.powersync.com/handling-writes/handling-update-conflicts)  
-[https://docs.powersync.com/handling-writes/custom-conflict-resolution](https://docs.powersync.com/handling-writes/custom-conflict-resolution)

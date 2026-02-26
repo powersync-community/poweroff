@@ -204,9 +204,6 @@ export function TicketDescriptionCrdt(props: {
           setTextFromTextarea(nextText);
         }}
       />
-      <div class="mt-2 text-xs text-emerald-700">
-        Auto-syncing Yjs updates to `ticket_description_update`.
-      </div>
     </div>
   );
 }

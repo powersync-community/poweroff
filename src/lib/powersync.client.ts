@@ -11,7 +11,7 @@ import {
 } from "~/lib/sync-activity";
 import { isSyncPaused } from "~/sync/control";
 
-type SerializableCrudEntry = {
+export type SerializableCrudEntry = {
   op: string | number;
   table: string;
   id: string;
@@ -48,11 +48,6 @@ class TicketConnector implements PowerSyncBackendConnector {
   }
 
   async uploadData(database: AbstractPowerSyncDatabase): Promise<void> {
-    if (isSyncPaused()) {
-      console.log("[powersync] upload paused");
-      return;
-    }
-
     while (true) {
       if (isSyncPaused()) {
         console.log(
@@ -252,6 +247,7 @@ export const powerSyncDb = new PowerSyncDatabase({
 
 const connector = new TicketConnector();
 let connectPromise: Promise<void> | null = null;
+let connectionTransitionPromise: Promise<void> = Promise.resolve();
 
 export async function getPowerSync() {
   if (!connectPromise) {
@@ -269,4 +265,45 @@ export async function getPowerSync() {
 
   await connectPromise;
   return powerSyncDb;
+}
+
+export async function setPowerSyncConnectionPaused(paused: boolean) {
+  const operation = connectionTransitionPromise.then(async () => {
+    if (paused && !connectPromise) {
+      console.log(
+        "[powersync] pause requested before initial connect; skipping disconnect",
+      );
+      return;
+    }
+
+    const db = await getPowerSync();
+    console.log("[powersync] set connection paused", {
+      paused,
+      connected: db.connected,
+    });
+    console.trace("[powersync] set connection paused trace");
+
+    if (paused) {
+      if (!db.connected) {
+        console.log("[powersync] already disconnected");
+        return;
+      }
+
+      await db.disconnect();
+      console.log("[powersync] disconnected while paused");
+      return;
+    }
+
+    if (db.connected) {
+      console.log("[powersync] already connected");
+      return;
+    }
+
+    await db.connect(connector);
+    await db.waitForReady();
+    console.log("[powersync] reconnected after pause");
+  });
+
+  connectionTransitionPromise = operation.catch(() => undefined);
+  await operation;
 }

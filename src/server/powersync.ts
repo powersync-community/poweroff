@@ -2,6 +2,7 @@ import { CrudEntry } from "@powersync/common";
 import { SignJWT } from "jose";
 import { resolveTicketConflict } from "~/data/server/conflicts";
 import { processWriteBatch } from "~/data/server/write-batch";
+import { SerializableCrudEntry } from "~/lib/powersync.client";
 import { getServerSession } from "~/server/session";
 import type { SyncAuthClaims } from "~/sync/types";
 
@@ -47,7 +48,7 @@ export async function getPowerSyncToken() {
   };
 }
 
-export async function uploadData(operations: CrudEntry[]) {
+export async function uploadData(operations: SerializableCrudEntry[]) {
   "use server";
 
   const session = getServerSession();

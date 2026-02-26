@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
-import { CrudEntry, UpdateType } from "@powersync/common";
+import { UpdateType } from "@powersync/common";
 import { queryInternal, withTransaction } from "~/server/db";
 import type { ServerSession } from "~/server/session";
 import type { UploadResult, SyncOutcome } from "~/sync/types";
+import { SerializableCrudEntry } from "~/lib/powersync.client";
 
 type TicketStatus = "pending" | "in_progress" | "done";
 
-function toOpKey(op: CrudEntry, session: ServerSession) {
+function toOpKey(op: SerializableCrudEntry, session: ServerSession) {
   const payload = JSON.stringify({
     op: op.op,
     table: op.table,
@@ -52,7 +53,7 @@ async function insertActivity(args: {
 }
 
 async function applyTicketOperation(
-  op: CrudEntry,
+  op: SerializableCrudEntry,
   session: ServerSession,
   opKey: string,
 ): Promise<UploadResult> {
@@ -158,12 +159,7 @@ async function applyTicketOperation(
       };
     }
 
-    const incomingVersion = Number(opData.version);
-    const isVersionConflict =
-      Number.isFinite(incomingVersion) &&
-      incomingVersion < Number(current.version);
-
-    if (isVersionConflict && nextTitle !== current.title) {
+    if (nextTitle !== current.title) {
       const conflictInsert = await queryInternal(
         `INSERT INTO ticket_conflict (
           id,
@@ -226,13 +222,17 @@ async function applyTicketOperation(
     );
 
     for (const update of updates) {
-      await insertActivity({
-        ticketId: op.id,
-        action: "ticket_field_updated",
-        fieldName: update.field,
-        userId: session.userId,
-        details: { value: update.value },
-      });
+      await queryInternal(
+        `INSERT INTO ticket_activity (id, ticket_id, action, field_name, details, created_by)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, $5)`,
+        [
+          op.id,
+          `ticket_field_updated`,
+          update.field ?? null,
+          JSON.stringify({ value: update.value }),
+          session.userId ?? null,
+        ],
+      );
     }
   }
 
@@ -285,7 +285,7 @@ async function applyTicketOperation(
 }
 
 async function applyTicketAssignmentOperation(
-  op: CrudEntry,
+  op: SerializableCrudEntry,
   session: ServerSession,
   opKey: string,
 ): Promise<UploadResult> {
@@ -344,7 +344,7 @@ async function applyTicketAssignmentOperation(
 }
 
 async function applyTicketCommentOperation(
-  op: CrudEntry,
+  op: SerializableCrudEntry,
   session: ServerSession,
   opKey: string,
 ): Promise<UploadResult> {
@@ -402,7 +402,7 @@ async function applyTicketCommentOperation(
 }
 
 async function applyTicketAttachmentUrlOperation(
-  op: CrudEntry,
+  op: SerializableCrudEntry,
   session: ServerSession,
   opKey: string,
 ): Promise<UploadResult> {
@@ -472,7 +472,7 @@ async function applyTicketAttachmentUrlOperation(
 }
 
 async function applyTicketLinkOperation(
-  op: CrudEntry,
+  op: SerializableCrudEntry,
   session: ServerSession,
   opKey: string,
 ): Promise<UploadResult> {
@@ -530,7 +530,7 @@ async function applyTicketLinkOperation(
 }
 
 async function applyTicketDescriptionUpdateOperation(
-  op: CrudEntry,
+  op: SerializableCrudEntry,
   session: ServerSession,
   opKey: string,
 ): Promise<UploadResult> {
@@ -578,7 +578,7 @@ async function applyTicketDescriptionUpdateOperation(
 }
 
 async function applyOperation(
-  op: CrudEntry,
+  op: SerializableCrudEntry,
   session: ServerSession,
   opKey: string,
 ): Promise<UploadResult> {
@@ -616,7 +616,7 @@ async function applyOperation(
 }
 
 async function resolveWithDedupe(
-  op: CrudEntry,
+  op: SerializableCrudEntry,
   session: ServerSession,
 ): Promise<UploadResult> {
   const opKey = toOpKey(op, session);
@@ -663,7 +663,7 @@ async function resolveWithDedupe(
 }
 
 export async function processWriteBatch(
-  operations: CrudEntry[],
+  operations: SerializableCrudEntry[],
   session: ServerSession,
 ) {
   const results: UploadResult[] = [];

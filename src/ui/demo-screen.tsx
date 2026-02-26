@@ -22,7 +22,8 @@ import {
   ticketLinksCollection,
   ticketsCollection,
 } from "~/lib/tanstack-db";
-import { isSyncPaused, toggleSyncPaused } from "~/sync/control";
+import { setPowerSyncConnectionPaused } from "~/lib/powersync";
+import { isSyncPaused, setSyncPaused } from "~/sync/control";
 import { SyncActivityPanel } from "~/ui/sync-activity-panel";
 import { getDemoUserName } from "~/lib/demo-users";
 import { TicketDescriptionCrdt } from "~/ui/ticket-description-crdt";
@@ -104,7 +105,6 @@ export function DemoScreen(props: {
   const assignments = useTicketAssignments(effectiveTicketId);
   const comments = useTicketComments(effectiveTicketId);
   const attachments = useTicketAttachmentUrls(effectiveTicketId);
-  const links = useTicketLinks(effectiveTicketId);
   const activities = useTicketActivities(effectiveTicketId);
   const conflicts = useOpenTicketConflicts();
   const descriptionUpdates = useTicketDescriptionUpdates(effectiveTicketId);
@@ -129,10 +129,9 @@ export function DemoScreen(props: {
   });
 
   createEffect(() => {
-    const ticket = currentTicket();
+    const ticket = { ...currentTicket() };
+    console.log(`ticket`, ticket);
     if (!ticket) return;
-    if (draft.ticketId === ticket.id) return;
-
     setDraft({
       ticketId: ticket.id,
       title: String(ticket.title ?? ""),
@@ -186,24 +185,22 @@ export function DemoScreen(props: {
       return;
     }
 
-    await runLocalMutation("create ticket", async () => {
-      const id = crypto.randomUUID();
-      const now = new Date().toISOString();
-      await ticketsCollection.insert({
-        id,
-        title,
-        description: draft.newTicketDescription,
-        status: "pending",
-        deleted_at: null,
-        created_at: now,
-        updated_at: now,
-        version: 0,
-      }).isPersisted.promise;
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await ticketsCollection.insert({
+      id,
+      title,
+      description: draft.newTicketDescription,
+      status: "pending",
+      deleted_at: null,
+      created_at: now,
+      updated_at: now,
+      version: 0,
+    }).isPersisted.promise;
 
-      setDraft("newTicketTitle", "");
-      setDraft("newTicketDescription", "");
-      props.onSelectTicket(id);
-    });
+    setDraft("newTicketTitle", "");
+    setDraft("newTicketDescription", "");
+    props.onSelectTicket(id);
   };
 
   const saveTicketFields = async () => {
@@ -225,6 +222,27 @@ export function DemoScreen(props: {
         row.version = Number(ticket.version ?? 0);
         row.updated_at = new Date().toISOString();
       }).isPersisted.promise;
+    });
+  };
+
+  const deleteTicket = async (ticket: { id: string }) => {
+    if (destructiveDisabled()) {
+      setError(
+        "Destructive ticket edits are disabled while offline in this strategy",
+      );
+      return;
+    }
+
+    const nextTicketId = ticketList
+      .visibleTickets()
+      .find((item) => item.id !== ticket.id)?.id;
+
+    await runLocalMutation("delete ticket", async () => {
+      await ticketsCollection.delete(ticket.id).isPersisted.promise;
+
+      if (effectiveTicketId() === ticket.id) {
+        props.onSelectTicket(nextTicketId ?? "");
+      }
     });
   };
 
@@ -346,6 +364,19 @@ export function DemoScreen(props: {
     }
   };
 
+  const toggleOnlineState = async () => {
+    const nextPaused = !isSyncPaused();
+    setSyncPaused(nextPaused);
+
+    try {
+      await setPowerSyncConnectionPaused(nextPaused);
+    } catch (err: any) {
+      setSyncPaused(!nextPaused);
+      console.error("[demo-screen] failed to toggle sync connection", err);
+      setError(err?.message ?? "Failed to update online/offline state");
+    }
+  };
+
   return (
     <div class="h-screen bg-slate-100 text-gray-900">
       <header class="border-b border-gray-200 bg-white px-4 py-3">
@@ -369,7 +400,9 @@ export function DemoScreen(props: {
                   ? "bg-amber-600 text-white"
                   : "bg-emerald-700 text-white"
               }`}
-              onClick={toggleSyncPaused}
+              onClick={() => {
+                void toggleOnlineState();
+              }}
             >
               {isSyncPaused() ? "Offline (Reconnect)" : "Online (Go Offline)"}
             </button>
@@ -428,19 +461,34 @@ export function DemoScreen(props: {
           <div class="max-h-[calc(100vh-16rem)] overflow-y-auto p-2">
             <For each={ticketList.visibleTickets()}>
               {(ticket) => (
-                <button
+                <div
                   class={`mb-2 w-full rounded border px-3 py-2 text-left ${
                     ticket.id === effectiveTicketId()
                       ? "border-blue-400 bg-blue-50"
                       : "border-gray-200 bg-white hover:bg-gray-50"
                   }`}
-                  onClick={() => props.onSelectTicket(ticket.id)}
                 >
-                  <div class="text-sm font-medium text-gray-900">
-                    {ticket.title}
+                  <div class="flex items-start justify-between gap-2">
+                    <button
+                      class="min-w-0 flex-1 text-left"
+                      onClick={() => props.onSelectTicket(ticket.id)}
+                    >
+                      <div class="text-sm font-medium text-gray-900">
+                        {ticket.title}
+                      </div>
+                      <div class="mt-1 text-xs text-gray-600">
+                        {ticket.status}
+                      </div>
+                    </button>
+                    <button
+                      class="opacity-50 hover:opacity-100 rounded border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold uppercase text-red-700 hover:bg-red-100"
+                      disabled={saving() || destructiveDisabled()}
+                      onClick={() => void deleteTicket(ticket)}
+                    >
+                      &times;
+                    </button>
                   </div>
-                  <div class="mt-1 text-xs text-gray-600">{ticket.status}</div>
-                </button>
+                </div>
               )}
             </For>
           </div>
@@ -464,7 +512,7 @@ export function DemoScreen(props: {
                     Title
                   </label>
                   <input
-                    class="mb-3 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                    class="mb-3 w-full rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-200 disabled:text-gray-500"
                     value={draft.title}
                     disabled={destructiveDisabled() || saving()}
                     onInput={(event) =>
@@ -476,7 +524,7 @@ export function DemoScreen(props: {
                     Status
                   </label>
                   <select
-                    class="mb-3 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                    class="mb-3 w-full rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-200 disabled:text-gray-500"
                     value={draft.status}
                     disabled={destructiveDisabled() || saving()}
                     onChange={(event) =>
@@ -496,7 +544,7 @@ export function DemoScreen(props: {
                           Description
                         </label>
                         <textarea
-                          class="h-36 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                          class="h-36 w-full rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-200 disabled:text-gray-500"
                           value={draft.description}
                           disabled={destructiveDisabled() || saving()}
                           onInput={(event) =>
@@ -523,11 +571,6 @@ export function DemoScreen(props: {
                     >
                       Save Fields
                     </button>
-                    <Show when={destructiveDisabled()}>
-                      <span class="text-xs text-amber-700">
-                        Restricted strategy: edits disabled while offline.
-                      </span>
-                    </Show>
                   </div>
                 </section>
 
@@ -620,7 +663,7 @@ export function DemoScreen(props: {
 
                   <div class="rounded border border-gray-200 bg-white p-4">
                     <h3 class="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                      Attachment URLs
+                      Attachments
                     </h3>
                     <div class="mb-2 flex gap-2">
                       <input
@@ -666,57 +709,9 @@ export function DemoScreen(props: {
                       </For>
                     </div>
                   </div>
-
-                  <div class="rounded border border-gray-200 bg-white p-4">
-                    <h3 class="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                      Links
-                    </h3>
-                    <div class="mb-2 flex gap-2">
-                      <input
-                        class="flex-1 rounded border border-gray-300 px-2 py-1 text-sm"
-                        placeholder="https://..."
-                        value={draft.newLinkUrl}
-                        onInput={(event) =>
-                          setDraft("newLinkUrl", event.currentTarget.value)
-                        }
-                      />
-                      <button
-                        class="rounded bg-slate-900 px-2 py-1 text-xs font-semibold text-white"
-                        disabled={saving()}
-                        onClick={addLink}
-                      >
-                        Add
-                      </button>
-                    </div>
-                    <div class="space-y-1 text-xs">
-                      <For each={links()}>
-                        {(link) => (
-                          <div class="flex items-center justify-between rounded border border-gray-100 bg-gray-50 px-2 py-1">
-                            <a
-                              href={link.url}
-                              class="max-w-[220px] truncate text-blue-700 underline"
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              {link.url}
-                            </a>
-                            <button
-                              class="text-red-700"
-                              disabled={saving()}
-                              onClick={() => removeLink(link.id)}
-                            >
-                              remove
-                            </button>
-                          </div>
-                        )}
-                      </For>
-                    </div>
-                  </div>
                 </section>
 
                 <section class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                  <SyncActivityPanel />
-
                   <Show when={props.strategy === "audit-log"}>
                     <section class="rounded border border-gray-200 bg-white p-4">
                       <h3 class="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
@@ -726,10 +721,14 @@ export function DemoScreen(props: {
                         <For each={activities()}>
                           {(item) => (
                             <div class="rounded border border-gray-100 bg-gray-50 px-2 py-1 text-xs text-gray-700">
-                              <div class="font-medium">{item.action}</div>
+                              <div class="font-medium">
+                                {item.action?.replaceAll("_", " ")}
+                              </div>
                               <div>
                                 {item.field_name ?? "-"} •{" "}
-                                {String(item.created_at ?? "")}
+                                {new Date(
+                                  item.created_at ?? "",
+                                ).toLocaleString()}
                               </div>
                               <Show when={item.details}>
                                 <pre class="mt-1 whitespace-pre-wrap text-[11px] text-gray-600">
