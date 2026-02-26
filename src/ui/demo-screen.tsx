@@ -555,9 +555,9 @@ export function DemoScreen(props: {
                     }
                   >
                     <TicketDescriptionCrdt
-                      ticketId={() => ticket().id}
+                      ticketId={ticket().id}
                       userId={props.session.userId}
-                      updates={descriptionUpdates}
+                      updates={descriptionUpdates()}
                       disabled={saving()}
                       onError={(message) => setError(message)}
                     />

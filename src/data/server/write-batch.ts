@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { UpdateType } from "@powersync/common";
-import { queryInternal, withTransaction } from "~/server/db";
+import type { PoolClient } from "pg";
+import { withTransaction } from "~/server/db";
 import type { ServerSession } from "~/server/session";
 import type { UploadResult, SyncOutcome } from "~/sync/types";
 import { SerializableCrudEntry } from "~/lib/powersync.client";
@@ -32,42 +33,29 @@ function normalizeStatus(value: unknown): TicketStatus | null {
   return null;
 }
 
-async function insertActivity(args: {
-  ticketId: string;
-  action: string;
-  fieldName?: string;
-  details?: Record<string, unknown>;
-  userId?: string;
-}) {
-  await queryInternal(
-    `INSERT INTO ticket_activity (id, ticket_id, action, field_name, details, created_by)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, $5)`,
-    [
-      args.ticketId,
-      args.action,
-      args.fieldName ?? null,
-      JSON.stringify(args.details ?? {}),
-      args.userId ?? null,
-    ],
-  );
-}
-
 async function applyTicketOperation(
   op: SerializableCrudEntry,
   session: ServerSession,
   opKey: string,
+  client: PoolClient,
 ): Promise<UploadResult> {
   const opData = (op.opData ?? {}) as Record<string, unknown>;
 
   if (op.op === UpdateType.DELETE) {
-    await queryInternal(`UPDATE ticket SET deleted_at = now() WHERE id = $1`, [
+    await client.query(`UPDATE ticket SET deleted_at = now() WHERE id = $1`, [
       op.id,
     ]);
-    await insertActivity({
-      ticketId: op.id,
-      action: "ticket_deleted",
-      userId: session.userId,
-    });
+    await client.query(
+      `INSERT INTO ticket_activity (id, ticket_id, action, field_name, details, created_by)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, $5)`,
+      [
+        op.id,
+        "ticket_deleted",
+        null,
+        JSON.stringify({}),
+        session.userId ?? null,
+      ],
+    );
 
     return {
       opKey,
@@ -78,7 +66,7 @@ async function applyTicketOperation(
     };
   }
 
-  const currentResult = await queryInternal(
+  const currentResult = await client.query(
     `SELECT id, title, description, status, version FROM ticket WHERE id = $1`,
     [op.id],
   );
@@ -108,7 +96,7 @@ async function applyTicketOperation(
     const description = asText(opData.description);
     const status = normalizeStatus(opData.status) ?? "pending";
 
-    await queryInternal(
+    await client.query(
       `INSERT INTO ticket (id, title, description, status, deleted_at, created_at, updated_at, version)
        VALUES ($1, $2, $3, $4, NULL, now(), now(), 0)
        ON CONFLICT (id) DO UPDATE
@@ -120,12 +108,17 @@ async function applyTicketOperation(
       [op.id, title, description, status],
     );
 
-    await insertActivity({
-      ticketId: op.id,
-      action: "ticket_created",
-      userId: session.userId,
-      details: { title, status },
-    });
+    await client.query(
+      `INSERT INTO ticket_activity (id, ticket_id, action, field_name, details, created_by)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, $5)`,
+      [
+        op.id,
+        "ticket_created",
+        null,
+        JSON.stringify({ title, status }),
+        session.userId ?? null,
+      ],
+    );
 
     return {
       opKey,
@@ -160,7 +153,7 @@ async function applyTicketOperation(
     }
 
     if (nextTitle !== current.title) {
-      const conflictInsert = await queryInternal(
+      const conflictInsert = await client.query(
         `INSERT INTO ticket_conflict (
           id,
           ticket_id,
@@ -214,7 +207,7 @@ async function applyTicketOperation(
     const params = updates.map((update) => update.value);
     params.push(op.id);
 
-    await queryInternal(
+    await client.query(
       `UPDATE ticket
        SET ${assignments.join(", ")}
        WHERE id = $${params.length}`,
@@ -222,7 +215,7 @@ async function applyTicketOperation(
     );
 
     for (const update of updates) {
-      await queryInternal(
+      await client.query(
         `INSERT INTO ticket_activity (id, ticket_id, action, field_name, details, created_by)
          VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, $5)`,
         [
@@ -237,13 +230,17 @@ async function applyTicketOperation(
   }
 
   if (conflictId) {
-    await insertActivity({
-      ticketId: op.id,
-      action: "ticket_conflict_created",
-      fieldName: "title",
-      userId: session.userId,
-      details: { conflictId },
-    });
+    await client.query(
+      `INSERT INTO ticket_activity (id, ticket_id, action, field_name, details, created_by)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, $5)`,
+      [
+        op.id,
+        "ticket_conflict_created",
+        "title",
+        JSON.stringify({ conflictId }),
+        session.userId ?? null,
+      ],
+    );
 
     return {
       opKey,
@@ -288,9 +285,10 @@ async function applyTicketAssignmentOperation(
   op: SerializableCrudEntry,
   session: ServerSession,
   opKey: string,
+  client: PoolClient,
 ): Promise<UploadResult> {
   if (op.op === UpdateType.DELETE) {
-    await queryInternal(
+    await client.query(
       `UPDATE ticket_assignment SET deleted_at = now() WHERE id = $1`,
       [op.id],
     );
@@ -318,21 +316,19 @@ async function applyTicketAssignmentOperation(
     };
   }
 
-  await withTransaction(async (client) => {
-    await client.query(
-      `INSERT INTO ticket_assignment (id, ticket_id, user_id, deleted_at, created_at)
-       VALUES ($1, $2, $3, NULL, now())
-       ON CONFLICT (ticket_id, user_id)
-       DO UPDATE SET deleted_at = NULL`,
-      [op.id, ticketId, userId],
-    );
+  await client.query(
+    `INSERT INTO ticket_assignment (id, ticket_id, user_id, deleted_at, created_at)
+     VALUES ($1, $2, $3, NULL, now())
+     ON CONFLICT (ticket_id, user_id)
+     DO UPDATE SET deleted_at = NULL`,
+    [op.id, ticketId, userId],
+  );
 
-    await client.query(
-      `INSERT INTO ticket_activity (id, ticket_id, action, field_name, details, created_by)
-       VALUES (gen_random_uuid(), $1, 'assignment_added', 'assignee', $2::jsonb, $3)`,
-      [ticketId, JSON.stringify({ userId }), session.userId],
-    );
-  });
+  await client.query(
+    `INSERT INTO ticket_activity (id, ticket_id, action, field_name, details, created_by)
+     VALUES (gen_random_uuid(), $1, 'assignment_added', 'assignee', $2::jsonb, $3)`,
+    [ticketId, JSON.stringify({ userId }), session.userId],
+  );
 
   return {
     opKey,
@@ -347,9 +343,10 @@ async function applyTicketCommentOperation(
   op: SerializableCrudEntry,
   session: ServerSession,
   opKey: string,
+  client: PoolClient,
 ): Promise<UploadResult> {
   if (op.op === UpdateType.DELETE) {
-    await queryInternal(
+    await client.query(
       `UPDATE ticket_comment SET deleted_at = now() WHERE id = $1`,
       [op.id],
     );
@@ -376,21 +373,19 @@ async function applyTicketCommentOperation(
     };
   }
 
-  await withTransaction(async (client) => {
-    await client.query(
-      `INSERT INTO ticket_comment (id, ticket_id, body, created_by, deleted_at, created_at)
-       VALUES ($1, $2, $3, $4, NULL, now())
-       ON CONFLICT (id)
-       DO UPDATE SET body = EXCLUDED.body, deleted_at = NULL`,
-      [op.id, ticketId, body, session.userId],
-    );
+  await client.query(
+    `INSERT INTO ticket_comment (id, ticket_id, body, created_by, deleted_at, created_at)
+     VALUES ($1, $2, $3, $4, NULL, now())
+     ON CONFLICT (id)
+     DO UPDATE SET body = EXCLUDED.body, deleted_at = NULL`,
+    [op.id, ticketId, body, session.userId],
+  );
 
-    await client.query(
-      `INSERT INTO ticket_activity (id, ticket_id, action, field_name, details, created_by)
-       VALUES (gen_random_uuid(), $1, 'comment_added', 'comment', $2::jsonb, $3)`,
-      [ticketId, JSON.stringify({ commentId: op.id }), session.userId],
-    );
-  });
+  await client.query(
+    `INSERT INTO ticket_activity (id, ticket_id, action, field_name, details, created_by)
+     VALUES (gen_random_uuid(), $1, 'comment_added', 'comment', $2::jsonb, $3)`,
+    [ticketId, JSON.stringify({ commentId: op.id }), session.userId],
+  );
 
   return {
     opKey,
@@ -405,9 +400,10 @@ async function applyTicketAttachmentUrlOperation(
   op: SerializableCrudEntry,
   session: ServerSession,
   opKey: string,
+  client: PoolClient,
 ): Promise<UploadResult> {
   if (op.op === UpdateType.DELETE) {
-    await queryInternal(
+    await client.query(
       `UPDATE ticket_attachment_url SET deleted_at = now() WHERE id = $1`,
       [op.id],
     );
@@ -438,29 +434,27 @@ async function applyTicketAttachmentUrlOperation(
     asText(opData.url_hash).trim() ||
     createHash("md5").update(url).digest("hex");
 
-  await withTransaction(async (client) => {
-    await client.query(
-      `INSERT INTO ticket_attachment_url (
-        id,
-        ticket_id,
-        url,
-        url_hash,
-        created_by,
-        deleted_at,
-        created_at
-      )
-      VALUES ($1, $2, $3, $4, $5, NULL, now())
-      ON CONFLICT (ticket_id, url_hash)
-      DO UPDATE SET url = EXCLUDED.url, deleted_at = NULL`,
-      [op.id, ticketId, url, urlHash, session.userId],
-    );
+  await client.query(
+    `INSERT INTO ticket_attachment_url (
+      id,
+      ticket_id,
+      url,
+      url_hash,
+      created_by,
+      deleted_at,
+      created_at
+    )
+    VALUES ($1, $2, $3, $4, $5, NULL, now())
+    ON CONFLICT (ticket_id, url_hash)
+    DO UPDATE SET url = EXCLUDED.url, deleted_at = NULL`,
+    [op.id, ticketId, url, urlHash, session.userId],
+  );
 
-    await client.query(
-      `INSERT INTO ticket_activity (id, ticket_id, action, field_name, details, created_by)
-       VALUES (gen_random_uuid(), $1, 'attachment_added', 'attachment_url', $2::jsonb, $3)`,
-      [ticketId, JSON.stringify({ url }), session.userId],
-    );
-  });
+  await client.query(
+    `INSERT INTO ticket_activity (id, ticket_id, action, field_name, details, created_by)
+     VALUES (gen_random_uuid(), $1, 'attachment_added', 'attachment_url', $2::jsonb, $3)`,
+    [ticketId, JSON.stringify({ url }), session.userId],
+  );
 
   return {
     opKey,
@@ -475,9 +469,10 @@ async function applyTicketLinkOperation(
   op: SerializableCrudEntry,
   session: ServerSession,
   opKey: string,
+  client: PoolClient,
 ): Promise<UploadResult> {
   if (op.op === UpdateType.DELETE) {
-    await queryInternal(
+    await client.query(
       `UPDATE ticket_link SET deleted_at = now() WHERE id = $1`,
       [op.id],
     );
@@ -504,21 +499,19 @@ async function applyTicketLinkOperation(
     };
   }
 
-  await withTransaction(async (client) => {
-    await client.query(
-      `INSERT INTO ticket_link (id, ticket_id, url, created_by, deleted_at, created_at)
-       VALUES ($1, $2, $3, $4, NULL, now())
-       ON CONFLICT (id) DO UPDATE
-       SET url = EXCLUDED.url, deleted_at = NULL`,
-      [op.id, ticketId, url, session.userId],
-    );
+  await client.query(
+    `INSERT INTO ticket_link (id, ticket_id, url, created_by, deleted_at, created_at)
+     VALUES ($1, $2, $3, $4, NULL, now())
+     ON CONFLICT (id) DO UPDATE
+     SET url = EXCLUDED.url, deleted_at = NULL`,
+    [op.id, ticketId, url, session.userId],
+  );
 
-    await client.query(
-      `INSERT INTO ticket_activity (id, ticket_id, action, field_name, details, created_by)
-       VALUES (gen_random_uuid(), $1, 'link_added', 'link', $2::jsonb, $3)`,
-      [ticketId, JSON.stringify({ url }), session.userId],
-    );
-  });
+  await client.query(
+    `INSERT INTO ticket_activity (id, ticket_id, action, field_name, details, created_by)
+     VALUES (gen_random_uuid(), $1, 'link_added', 'link', $2::jsonb, $3)`,
+    [ticketId, JSON.stringify({ url }), session.userId],
+  );
 
   return {
     opKey,
@@ -533,6 +526,7 @@ async function applyTicketDescriptionUpdateOperation(
   op: SerializableCrudEntry,
   session: ServerSession,
   opKey: string,
+  client: PoolClient,
 ): Promise<UploadResult> {
   if (op.op === UpdateType.DELETE) {
     return {
@@ -558,7 +552,7 @@ async function applyTicketDescriptionUpdateOperation(
     };
   }
 
-  const result = await queryInternal(
+  const result = await client.query(
     `INSERT INTO ticket_description_update (id, ticket_id, update_b64, created_by, created_at)
      VALUES ($1, $2, $3, $4, now())
      ON CONFLICT (id) DO NOTHING`,
@@ -581,29 +575,30 @@ async function applyOperation(
   op: SerializableCrudEntry,
   session: ServerSession,
   opKey: string,
+  client: PoolClient,
 ): Promise<UploadResult> {
   if (op.table === "ticket") {
-    return applyTicketOperation(op, session, opKey);
+    return applyTicketOperation(op, session, opKey, client);
   }
 
   if (op.table === "ticket_assignment") {
-    return applyTicketAssignmentOperation(op, session, opKey);
+    return applyTicketAssignmentOperation(op, session, opKey, client);
   }
 
   if (op.table === "ticket_comment") {
-    return applyTicketCommentOperation(op, session, opKey);
+    return applyTicketCommentOperation(op, session, opKey, client);
   }
 
   if (op.table === "ticket_attachment_url") {
-    return applyTicketAttachmentUrlOperation(op, session, opKey);
+    return applyTicketAttachmentUrlOperation(op, session, opKey, client);
   }
 
   if (op.table === "ticket_link") {
-    return applyTicketLinkOperation(op, session, opKey);
+    return applyTicketLinkOperation(op, session, opKey, client);
   }
 
   if (op.table === "ticket_description_update") {
-    return applyTicketDescriptionUpdateOperation(op, session, opKey);
+    return applyTicketDescriptionUpdateOperation(op, session, opKey, client);
   }
 
   return {
@@ -621,45 +616,47 @@ async function resolveWithDedupe(
 ): Promise<UploadResult> {
   const opKey = toOpKey(op, session);
 
-  const existing = await queryInternal(
-    `SELECT result_code, reason_code, conflict_id
-     FROM sync_operation
-     WHERE op_key = $1`,
-    [opKey],
-  );
+  return withTransaction(async (client) => {
+    const existing = await client.query(
+      `SELECT result_code, reason_code, conflict_id
+       FROM sync_operation
+       WHERE op_key = $1`,
+      [opKey],
+    );
 
-  if (existing.rowCount) {
-    const row = existing.rows[0] as {
-      result_code: SyncOutcome;
-      reason_code: string | null;
-      conflict_id: string | null;
-    };
+    if (existing.rowCount) {
+      const row = existing.rows[0] as {
+        result_code: SyncOutcome;
+        reason_code: string | null;
+        conflict_id: string | null;
+      };
 
-    return {
-      opKey,
-      table: op.table,
-      id: op.id,
-      result: row.result_code,
-      reasonCode: row.reason_code ?? undefined,
-      conflictId: row.conflict_id ?? undefined,
-    };
-  }
+      return {
+        opKey,
+        table: op.table,
+        id: op.id,
+        result: row.result_code,
+        reasonCode: row.reason_code ?? undefined,
+        conflictId: row.conflict_id ?? undefined,
+      };
+    }
 
-  const resolved = await applyOperation(op, session, opKey);
+    const resolved = await applyOperation(op, session, opKey, client);
 
-  await queryInternal(
-    `INSERT INTO sync_operation (op_key, result_code, reason_code, conflict_id)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (op_key) DO NOTHING`,
-    [
-      opKey,
-      resolved.result,
-      resolved.reasonCode ?? null,
-      resolved.conflictId ?? null,
-    ],
-  );
+    await client.query(
+      `INSERT INTO sync_operation (op_key, result_code, reason_code, conflict_id)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (op_key) DO NOTHING`,
+      [
+        opKey,
+        resolved.result,
+        resolved.reasonCode ?? null,
+        resolved.conflictId ?? null,
+      ],
+    );
 
-  return resolved;
+    return resolved;
+  });
 }
 
 export async function processWriteBatch(

@@ -37,9 +37,9 @@ function base64ToUint8Array(base64: string): Uint8Array {
 }
 
 export function TicketDescriptionCrdt(props: {
-  ticketId: () => string;
+  ticketId: string;
   userId: string;
-  updates: () => DescriptionUpdateRow[];
+  updates: DescriptionUpdateRow[];
   disabled?: boolean;
   onError: (message: string) => void;
 }) {
@@ -48,11 +48,9 @@ export function TicketDescriptionCrdt(props: {
   const localOrigin = Symbol("local-yjs-origin");
   const seenUpdateIds = new Set<string>();
 
-  let started = false;
   let activeTicketId: string | null = null;
   let doc: Y.Doc | null = null;
   let yText: Y.Text | null = null;
-  let stopObserver: (() => void) | null = null;
 
   const handleLocalUpdate = async (update: Uint8Array, origin: unknown) => {
     if (origin === remoteOrigin || !activeTicketId) {
@@ -80,52 +78,49 @@ export function TicketDescriptionCrdt(props: {
     }
   };
 
-  const stopBridge = () => {
-    if (!started) return;
-    started = false;
+  const setTextFromTextarea = (nextText: string) => {
+    if (!doc || !yText) return;
 
-    console.log("[ticket-description-crdt] stop", {
-      ticketId: activeTicketId,
-      seenUpdates: seenUpdateIds.size,
-    });
+    const prevText = yText.toString();
+    if (prevText === nextText) return;
 
-    doc?.off("updateV2", handleLocalUpdate);
-    stopObserver?.();
-    stopObserver = null;
-
-    doc?.destroy();
-    doc = null;
-    yText = null;
-    activeTicketId = null;
-    seenUpdateIds.clear();
+    doc.transact(() => {
+      yText!.delete(0, prevText.length);
+      yText!.insert(0, nextText);
+    }, localOrigin);
   };
 
-  const startBridge = (ticketId: string) => {
-    if (started) return;
-    started = true;
+  createEffect(() => {
+    const ticketId = props.ticketId;
     activeTicketId = ticketId;
     doc = new Y.Doc();
     yText = doc.getText("ticket-description");
-
-    console.log("[ticket-description-crdt] start", { ticketId });
-    console.trace("[ticket-description-crdt] start trace", { ticketId });
 
     const onText = () => {
       setText(yText?.toString() ?? "");
     };
     yText.observe(onText);
-    stopObserver = () => {
-      yText?.unobserve(onText);
-    };
 
     doc.on("updateV2", handleLocalUpdate);
     setText(yText.toString());
-  };
 
-  const applyRemoteUpdates = (rows: DescriptionUpdateRow[]) => {
+    onCleanup(() => {
+      yText?.unobserve(onText);
+
+      doc?.off("updateV2", handleLocalUpdate);
+
+      doc?.destroy();
+      doc = null;
+      yText = null;
+      activeTicketId = null;
+      seenUpdateIds.clear();
+    });
+  });
+
+  createEffect(() => {
     if (!doc || !activeTicketId) return;
 
-    const updates = rows
+    const updates = props.updates
       .filter(
         (row) =>
           row.ticket_id === activeTicketId && !!row.id && !!row.update_b64,
@@ -153,40 +148,6 @@ export function TicketDescriptionCrdt(props: {
         props.onError("Failed to sync collaborative description");
       }
     }
-  };
-
-  const setTextFromTextarea = (nextText: string) => {
-    if (!doc || !yText) return;
-
-    const prevText = yText.toString();
-    if (prevText === nextText) return;
-
-    doc.transact(() => {
-      yText!.delete(0, prevText.length);
-      yText!.insert(0, nextText);
-    }, localOrigin);
-  };
-
-  createEffect(() => {
-    const ticketId = props.ticketId();
-
-    stopBridge();
-
-    if (!ticketId) {
-      setText("");
-      return;
-    }
-
-    startBridge(ticketId);
-
-    onCleanup(() => {
-      stopBridge();
-    });
-  });
-
-  createEffect(() => {
-    props.ticketId();
-    applyRemoteUpdates(props.updates());
   });
 
   return (
